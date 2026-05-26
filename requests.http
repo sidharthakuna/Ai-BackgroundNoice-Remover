@@ -1,0 +1,12 @@
+### GET request to example server
+POST http://localhost:8080/api/v1/audio/enhance
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="file"; filename="audio.wav"
+Content-Type: audio/wav
+
+< ./audio.wav
+--boundary--
+
+###
