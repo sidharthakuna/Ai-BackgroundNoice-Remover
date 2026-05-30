@@ -1,0 +1,176 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:'Segoe UI',sans-serif;
+}
+
+body{
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+
+    background:#0f172a;
+}
+
+#box{
+    width:450px;
+
+    background:#1e293b;
+
+    padding:35px;
+
+    border-radius:20px;
+
+    text-align:center;
+
+    box-shadow:
+    0 0 20px rgba(59,130,246,0.3);
+
+    border:1px solid #334155;
+}
+
+h1{
+    color:white;
+    margin-bottom:15px;
+}
+
+.subtitle{
+    color:#94a3b8;
+    margin-bottom:25px;
+}
+
+#fileInput{
+    width:100%;
+    padding:10px;
+    margin-bottom:20px;
+
+    border-radius:10px;
+
+    border:1px solid #475569;
+
+    background:#334155;
+
+    color:white;
+}
+
+#uploadBtn{
+    width:100%;
+
+    padding:12px;
+
+    border:none;
+
+    border-radius:10px;
+
+    background:#3b82f6;
+
+    color:white;
+
+    font-size:16px;
+
+    font-weight:bold;
+
+    cursor:pointer;
+
+    transition:0.3s;
+}
+
+#uploadBtn:hover{
+    background:#2563eb;
+
+    box-shadow:
+    0 0 15px rgba(59,130,246,0.7);
+
+    transform:translateY(-2px);
+}
+
+#status{
+    margin-top:20px;
+
+    padding:10px;
+
+    border-radius:10px;
+
+    background:#334155;
+
+    color:#e2e8f0;
+}
+
+#downloadArea{
+    margin-top:20px;
+}
+
+#downloadArea a{
+    text-decoration:none;
+
+    display:inline-block;
+
+    padding:12px 20px;
+
+    background:#22c55e;
+
+    color:white;
+
+    border-radius:10px;
+
+    font-weight:bold;
+}
+
+.upload-area{
+    width:100%;
+    height:120px;
+
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+
+    background:#334155;
+
+    border:2px dashed #64748b;
+
+    border-radius:15px;
+
+    cursor:pointer;
+
+    transition:0.3s;
+
+    margin-bottom:20px;
+}
+
+.upload-area:hover{
+    border-color:#3b82f6;
+
+    background:#3b4760;
+
+    box-shadow:0 0 15px rgba(59,130,246,0.4);
+}
+
+.upload-icon{
+    font-size:35px;
+    margin-bottom:10px;
+}
+
+#fileName{
+    color:white;
+    font-size:15px;
+}
+
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid #475569;
+    border-top: 3px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

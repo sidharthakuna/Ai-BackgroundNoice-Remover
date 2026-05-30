@@ -1,4 +1,3 @@
-### GET request to example server
 POST http://localhost:8080/api/v1/audio/enhance
 Content-Type: multipart/form-data; boundary=boundary
 
@@ -6,7 +5,11 @@ Content-Type: multipart/form-data; boundary=boundary
 Content-Disposition: form-data; name="file"; filename="audio.wav"
 Content-Type: audio/wav
 
-< ./audio.wav
+< ./src/main/resources/music/audio.wav
 --boundary--
 
 ###
+GET https://auphonic.com/api/production/i858mf7GHMo5jwdMPHWUm5.json
+
+###
+GET http://localhost:8080/api/v1/audio/test
