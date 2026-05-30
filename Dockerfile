@@ -6,8 +6,10 @@ RUN pip3 install noisereduce scipy soundfile numpy --break-system-packages
 
 WORKDIR /app
 
-COPY target/*.jar app.jar
+COPY . .
+
+RUN chmod +x mvnw && ./mvnw package -DskipTests
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "target/AI-Backgroound-Noice-Remover-0.0.1-SNAPSHOT.jar"]
