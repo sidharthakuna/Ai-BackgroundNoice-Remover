@@ -148,32 +148,54 @@ public class NoiceRemovalService {
         return response.getBody();
     }
 
-    public byte[] removeNoise(MultipartFile file) throws Exception{
-        Path inputPath = Files.createTempFile("input",".wav");
-        Files.write(inputPath, file.getBytes());
+    public byte[] removeNoise(MultipartFile file) throws Exception {
 
-        //create output file path
-        Path outputPath = Files.createTempFile("output",".wav");
+        String originalName = file.getOriginalFilename();
+        String ext = (originalName != null && originalName.endsWith(".mp3")) ? ".mp3" : ".wav";
 
-        String scriptPath = new ClassPathResource("denoise.py").getFile().getAbsolutePath();
+        Path inputPath = Files.createTempFile("input", ext);
+        Path outputPath = Files.createTempFile("output", ".wav");
 
-        //run python script
-        ProcessBuilder pb= new ProcessBuilder(
-                "python",
-                scriptPath,
-                inputPath.toString(),
-                outputPath.toString()
-        );
-        pb.start().waitFor();
+        Path scriptPath = null;
+        try {
+            Files.write(inputPath, file.getBytes());
 
-        //read output files
-        byte[] cleanedAudio = Files.readAllBytes(outputPath);
+            // Copy denoise.py from inside the JAR to a real temp file
+            scriptPath = Files.createTempFile("denoise", ".py");
+            try (var in = new ClassPathResource("denoise.py").getInputStream()) {
+                Files.copy(in, scriptPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
 
-        //delete temp files
-        Files.delete(inputPath);
-        Files.delete(outputPath);
+            ProcessBuilder pb = new ProcessBuilder(
+                    "python3",       // try "python" if this fails
+                    scriptPath.toString(),
+                    inputPath.toString(),
+                    outputPath.toString()
+            );
+            pb.redirectErrorStream(true); // merge stdout + stderr
 
-        return cleanedAudio;
+            Process process = pb.start();
+
+            //  READ the output so you can see what Python says
+            String pythonOutput = new String(process.getInputStream().readAllBytes());
+            int exitCode = process.waitFor();
+
+            //  Print to Spring console
+            System.out.println("=== Python Output ===");
+            System.out.println(pythonOutput);
+            System.out.println("=== Exit Code: " + exitCode + " ===");
+
+            if (exitCode != 0) {
+                throw new Exception("Python script failed: " + pythonOutput);
+            }
+
+            return Files.readAllBytes(outputPath);
+
+        } finally {
+            Files.deleteIfExists(inputPath);
+            Files.deleteIfExists(outputPath);
+            Files.deleteIfExists(scriptPath);
+        }
     }
 
 

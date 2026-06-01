@@ -1,8 +1,8 @@
 FROM eclipse-temurin:21-jdk
 
-RUN apt-get update && apt-get install -y python3 python3-pip
+RUN apt-get update && apt-get install -y python3 python3-pip ffmpeg
 
-RUN pip3 install noisereduce scipy soundfile numpy --break-system-packages
+RUN pip3 install noisereduce scipy soundfile numpy librosa --break-system-packages
 
 WORKDIR /app
 

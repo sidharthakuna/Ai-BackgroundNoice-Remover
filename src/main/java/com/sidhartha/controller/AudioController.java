@@ -25,9 +25,11 @@ public class AudioController {
 
         //for the "python" script "Ai"
         byte[] cleanedAudio = noiceRemovalService.removeNoise(file);
+
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-        headers.setContentDispositionFormData("attachment","enhanced_audio.wav");
+        headers.setContentType(MediaType.valueOf("audio/wav"));  // always wav output
+        headers.setContentDispositionFormData("attachment", "enhanced_audio.wav"); // always wav
+
         return ResponseEntity.ok()
                 .headers(headers)
                 .body(cleanedAudio);
