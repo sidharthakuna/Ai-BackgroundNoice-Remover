@@ -1,10 +1,9 @@
 package com.sidhartha.controller;
 
-import com.sidhartha.service.NoiceRemovalService;
+import com.sidhartha.service.NoiseRemovalService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
@@ -12,9 +11,12 @@ import org.springframework.web.multipart.MultipartFile;
 public class AudioController {
 
     @Autowired
-    NoiceRemovalService noiceRemovalService; //spring give this from the service class
+    NoiseRemovalService noiceRemovalService; //spring give this from the service class
     @PostMapping("/enhance")
-    public ResponseEntity<byte[]> receiveFile(@RequestParam("file") MultipartFile file) throws Exception {
+    public ResponseEntity<byte[]> receiveFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "demucs" , defaultValue = "false") boolean useDemucs
+            ) throws Exception {
         //===========
         //for api call
 //        String uuid = noiceRemovalService.createProduction(file);
@@ -24,7 +26,7 @@ public class AudioController {
         //==============
 
         //for the "python" script "Ai"
-        byte[] cleanedAudio = noiceRemovalService.removeNoise(file);
+        byte[] cleanedAudio = noiceRemovalService.removeNoise(file, useDemucs);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.valueOf("audio/wav"));  // always wav output

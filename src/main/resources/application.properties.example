@@ -4,7 +4,7 @@ spring.application.name=AI-Backgroound-Noice-Remover
 spring.servlet.multipart.max-file-size=100MB
 spring.servlet.multipart.max-request-size=100MB
 
-spring.mvc.async.request-timeout=120000
+spring.mvc.async.request-timeout=300000
 
 auphonic.username=${AUPHONIC_USERNAME:dummy}
 auphonic.password=${AUPHONIC_PASSWORD:dummy}

@@ -1,0 +1,8 @@
+numpy
+scipy
+soundfile
+librosa
+webrtcvad
+pyloudnorm
+deepfilternet==0.5.6
+demucs

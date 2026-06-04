@@ -1,15 +1,45 @@
-FROM eclipse-temurin:21-jdk
+# ==========================
+# Build Stage
+# ==========================
+FROM eclipse-temurin:21-jdk AS builder
 
-RUN apt-get update && apt-get install -y python3 python3-pip ffmpeg
+WORKDIR /app
+COPY . .
+RUN chmod +x mvnw
+RUN ./mvnw clean package -DskipTests
 
-RUN pip3 install noisereduce scipy soundfile numpy librosa --break-system-packages
+# ==========================
+# Runtime Stage
+# ==========================
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y \
+    openjdk-21-jdk \
+    ffmpeg \
+    libsndfile1 \
+    curl \
+    build-essential \
+    git \
+    && curl https://sh.rustup.rs -sSf | sh -s -- -y \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 WORKDIR /app
 
-COPY . .
+COPY requirements.txt .
 
-RUN chmod +x mvnw && ./mvnw package -DskipTests
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir \
+        torch==2.1.0 \
+        torchaudio==2.1.0 \
+        --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
+
+COPY --from=builder /app/target/*.jar app.jar
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "target/AI-Backgroound-Noice-Remover-0.0.1-SNAPSHOT.jar"]
+ENTRYPOINT ["java", "-jar", "app.jar"]

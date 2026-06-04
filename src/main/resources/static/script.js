@@ -23,7 +23,10 @@ uploadBtn.addEventListener("click", async function(){
     const formData = new FormData();
     formData.append("file", file);
 
-    status.innerHTML = '<span class="spinner"></span> Processing your audio...';
+    downloadArea.innerHTML = "";
+
+    status.innerHTML =
+        '<span class="spinner"></span> Processing your audio...';
 
     uploadBtn.disabled = true;
 
@@ -38,29 +41,34 @@ uploadBtn.addEventListener("click", async function(){
         );
 
         if(!response.ok){
-            status.textContent = "Upload Failed!";
+            status.textContent =
+                `Upload Failed (${response.status})`;
             return;
         }
 
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
 
-        downloadArea.innerHTML = "";
+        const downloadLink = document.createElement("a");
+        downloadLink.href = url;
+        downloadLink.download = "enhanced_audio.wav";
+        downloadLink.textContent = "⬇ Download Clean Audio";
 
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "enhanced_audio.wav";
-        a.textContent = "⬇ Download Clean Audio";
-
-        downloadArea.appendChild(a);
+        downloadArea.appendChild(downloadLink);
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+        }, 10000);
 
         status.textContent = "Done!";
 
     }
     
     catch(error){
-        status.textContent = "Server not running!";
+        status.textContent =
+            "Unable to connect to the server.";
         console.error(error);
     }
-    uploadBtn.disabled = false;
+    finally{
+        uploadBtn.disabled = false;
+    }
 });
