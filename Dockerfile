@@ -18,9 +18,13 @@ RUN ./mvnw clean package -DskipTests
 
 FROM python:3.11-slim
 
-# Install Java, FFmpeg and native dependencies
+# Copy Java 21 runtime directly from builder stage
+COPY --from=builder /opt/java/openjdk /opt/java/openjdk
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# Install FFmpeg, libsndfile and native build tools
 RUN apt-get update && apt-get install -y \
-    openjdk-21-jdk \
     ffmpeg \
     libsndfile1 \
     curl \
@@ -31,10 +35,6 @@ RUN apt-get update && apt-get install -y \
 
 # Rust
 ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Java
-ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
-ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 WORKDIR /app
 
