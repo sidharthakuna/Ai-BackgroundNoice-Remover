@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ai-background-noise-remover
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: APP_CORS_ALLOWED_ORIGINS
+        value: "*"
+      - key: APP_JOBS_RETENTION_HOURS
+        value: "2"

@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Denoise — Clean up your audio</title>
+    <meta name="description" content="Remove background noise from audio files using AI. Drag, drop, and download cleaned audio in seconds.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<!-- Shared SVG icon defs, referenced everywhere via <use>. Single line-weight
+     system (2px stroke, round caps/joins) so every glyph reads as one family
+     instead of the mixed emoji set this replaces. -->
+<svg class="icon-defs" aria-hidden="true" focusable="false">
+    <defs>
+        <symbol id="icon-reel" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9"/>
+            <circle cx="12" cy="12" r="2.25" fill="currentColor" stroke="none"/>
+            <circle cx="12" cy="6.3" r="1.6"/>
+            <circle cx="16.7" cy="9.5" r="1.6"/>
+            <circle cx="15" cy="15.3" r="1.6"/>
+            <circle cx="9" cy="15.3" r="1.6"/>
+            <circle cx="7.3" cy="9.5" r="1.6"/>
+        </symbol>
+        <symbol id="icon-sun" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="4.25"/>
+            <path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.85 1.85M17.55 17.55l1.85 1.85M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.85-1.85M17.55 6.45l1.85-1.85"/>
+        </symbol>
+        <symbol id="icon-moon" viewBox="0 0 24 24">
+            <path d="M20 14.2A8.6 8.6 0 1 1 9.8 4a7 7 0 0 0 10.2 10.2Z"/>
+        </symbol>
+        <symbol id="icon-upload" viewBox="0 0 24 24">
+            <path d="M12 15.5V4M12 4 7.5 8.5M12 4l4.5 4.5"/>
+            <path d="M4.5 15.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/>
+        </symbol>
+        <symbol id="icon-wave" viewBox="0 0 24 24">
+            <path d="M2.5 12h2.4l1.6-5.5 2 11 2-13.5 2 13.5 2-8L15 12h2.2l1.4-2.3 1.4 2.3H21.5"/>
+        </symbol>
+        <symbol id="icon-close" viewBox="0 0 24 24">
+            <path d="M6 6l12 12M18 6 6 18"/>
+        </symbol>
+        <symbol id="icon-check" viewBox="0 0 24 24">
+            <path d="M4.5 12.5l5 5 10-11"/>
+        </symbol>
+        <symbol id="icon-download" viewBox="0 0 24 24">
+            <path d="M12 3.5v11M12 14.5 8 10.3M12 14.5l4-4.2"/>
+            <path d="M4.5 16v2.7a2.3 2.3 0 0 0 2.3 2.3h10.4a2.3 2.3 0 0 0 2.3-2.3V16"/>
+        </symbol>
+        <symbol id="icon-vocal" viewBox="0 0 24 24">
+            <rect x="9" y="3" width="6" height="10.5" rx="3"/>
+            <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/>
+        </symbol>
+        <symbol id="icon-alert" viewBox="0 0 24 24">
+            <path d="M12 3.5 21.5 20h-19L12 3.5Z"/>
+            <path d="M12 9.5v4.25M12 16.9v.1"/>
+        </symbol>
+        <symbol id="icon-trash" viewBox="0 0 24 24">
+            <path d="M4.5 7h15M9.5 7V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 14.5 5v2M18.5 7l-.8 12a2 2 0 0 1-2 1.9H8.3a2 2 0 0 1-2-1.9L5.5 7"/>
+            <path d="M10 11v6M14 11v6"/>
+        </symbol>
+        <symbol id="icon-mic" viewBox="0 0 24 24">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/>
+        </symbol>
+        <symbol id="icon-stop" viewBox="0 0 24 24">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+        </symbol>
+        <symbol id="icon-sparkles" viewBox="0 0 24 24">
+            <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z"/>
+        </symbol>
+    </defs>
+</svg>
+
+<header class="top-bar">
+    <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><svg class="icon icon-spin"><use href="#icon-reel"/></svg></span>
+        <span class="brand-name">Denoise</span>
+    </div>
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Switch to light theme" aria-pressed="false">
+        <svg class="icon theme-icon-moon"><use href="#icon-moon"/></svg>
+        <svg class="icon theme-icon-sun"><use href="#icon-sun"/></svg>
+    </button>
+</header>
+
+<main id="main">
+    <section class="intro">
+        <div class="intro-copy">
+            <p class="intro-eyebrow">Signal in <span class="eyebrow-arrow" aria-hidden="true"><svg class="icon icon-sm"><use href="#icon-wave"/></svg></span> Signal out, clean</p>
+            <h1>Clean up your audio</h1>
+            <p class="intro-body">Drop in audio or record from your mic. AI-powered noise removal, speech enhancement, and optional vocal isolation — processed on the server, never stored.</p>
+        </div>
+
+        <div class="idle-meter" aria-hidden="true">
+            <div class="idle-meter-gauge">
+                <svg viewBox="0 0 120 66" class="idle-meter-face">
+                    <path class="idle-meter-arc" d="M10 60 A50 50 0 0 1 110 60"/>
+                    <path class="idle-meter-arc-hot" d="M84 16 A50 50 0 0 1 110 60"/>
+                    <g class="idle-meter-needle-group">
+                        <line class="idle-meter-needle" x1="60" y1="60" x2="60" y2="14"/>
+                        <circle class="idle-meter-pivot" cx="60" cy="60" r="4"/>
+                    </g>
+                </svg>
+                <span class="idle-meter-label">L</span>
+            </div>
+            <div class="idle-meter-gauge">
+                <svg viewBox="0 0 120 66" class="idle-meter-face">
+                    <path class="idle-meter-arc" d="M10 60 A50 50 0 0 1 110 60"/>
+                    <path class="idle-meter-arc-hot" d="M84 16 A50 50 0 0 1 110 60"/>
+                    <g class="idle-meter-needle-group is-r">
+                        <line class="idle-meter-needle" x1="60" y1="60" x2="60" y2="14"/>
+                        <circle class="idle-meter-pivot" cx="60" cy="60" r="4"/>
+                    </g>
+                </svg>
+                <span class="idle-meter-label">R</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel" aria-labelledby="uploadHeading">
+        <h2 id="uploadHeading" class="visually-hidden">Upload audio files</h2>
+
+        <div id="dropZone" class="drop-zone" tabindex="0" role="button"
+             aria-label="Choose audio files or drag and drop them here">
+            <div class="drop-zone-reel" aria-hidden="true">
+                <svg class="icon icon-reel-large"><use href="#icon-reel"/></svg>
+            </div>
+            <svg class="icon drop-zone-icon" aria-hidden="true"><use href="#icon-upload"/></svg>
+            <p class="drop-zone-title">Drag &amp; drop audio files here</p>
+            <p class="drop-zone-subtitle">or click to browse — MP3, WAV, M4A, FLAC, OGG, AAC, or MP4/MOV video (max 100MB each)</p>
+            <input type="file" id="fileInput"
+                   accept=".mp3,.wav,.m4a,.flac,.ogg,.aac,.wma,.opus,.mp4,.mov,.mkv,.webm,audio/*,video/*"
+                   multiple hidden aria-hidden="true">
+        </div>
+
+        <!-- Separate Microphone Record Section -->
+        <div class="mic-capture-section">
+            <div class="mic-divider">
+                <span>OR</span>
+            </div>
+            <button id="recordMicBtn" class="btn btn-ghost mic-record-btn" type="button">
+                <span class="mic-icon-pulse"><svg class="icon icon-sm"><use href="#icon-mic"/></svg></span>
+                <span>Record Directly from Microphone</span>
+            </button>
+        </div>
+
+        <!-- Live Microphone Recording Panel -->
+        <div id="recordingPanel" class="recording-panel" hidden>
+            <div class="recording-indicator">
+                <span class="recording-dot"></span>
+                <span class="recording-text">Recording Live Audio…</span>
+                <span id="recordingTimer" class="recording-timer">00:00</span>
+            </div>
+            <div class="recording-actions">
+                <button id="stopRecordBtn" class="btn btn-primary btn-small" type="button">
+                    <svg class="icon icon-xs"><use href="#icon-stop"/></svg>
+                    <span>Done &amp; Add</span>
+                </button>
+                <button id="cancelRecordBtn" class="btn btn-ghost btn-small" type="button">
+                    Cancel
+                </button>
+            </div>
+        </div>
+
+
+        <div class="global-options">
+            <fieldset class="option-group">
+                <legend>Options for new uploads</legend>
+
+                <label class="switch-row" for="demucsToggle">
+                    <span class="switch-row-icon" aria-hidden="true"><svg class="icon icon-sm"><use href="#icon-vocal"/></svg></span>
+                    <input type="checkbox" id="demucsToggle">
+                    <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                    <span>Isolate vocals (Demucs) — removes background music</span>
+                </label>
+
+                <label class="select-row" for="modeSelect">
+                    <span>Enhancement mode</span>
+                    <select id="modeSelect">
+                        <option value="balanced" selected>Balanced — All-round</option>
+                        <option value="aggressive">Aggressive — Heavy Noise / Traffic</option>
+                        <option value="gentle">Gentle — Studio / Room Hum</option>
+                    </select>
+                </label>
+
+                <label class="select-row" for="formatSelect">
+                    <span>Output format</span>
+                    <select id="formatSelect">
+                        <option value="wav" selected>WAV — lossless</option>
+                        <option value="mp3">MP3</option>
+                        <option value="flac">FLAC</option>
+                        <option value="ogg">OGG</option>
+                    </select>
+                </label>
+            </fieldset>
+        </div>
+
+        <div id="fileListEmpty" class="file-list-empty">No files selected yet.</div>
+        <ul id="fileList" class="file-list" aria-live="polite"></ul>
+
+        <div class="action-row">
+            <button id="processAllBtn" class="btn btn-primary" type="button" disabled>
+                <svg class="icon icon-sm"><use href="#icon-wave"/></svg>
+                <span class="btn-label">Enhance Audio</span>
+            </button>
+            <button id="clearAllBtn" class="btn btn-ghost" type="button" disabled>
+                Clear all
+            </button>
+        </div>
+    </section>
+
+    <section class="panel history-panel" aria-labelledby="historyHeading">
+        <div class="history-header">
+            <div>
+                <h2 id="historyHeading">History <span id="historyCount" class="history-count">(0)</span></h2>
+                <p class="history-note">This session only — closing the tab clears it.</p>
+            </div>
+            <button id="clearHistoryBtn" class="btn btn-ghost btn-small" type="button" hidden>
+                <svg class="icon icon-xs"><use href="#icon-trash"/></svg>
+                Clear history
+            </button>
+        </div>
+        <div id="historyEmpty" class="file-list-empty">Processed files from this session will show up here.</div>
+        <ul id="historyList" class="history-list" aria-live="polite"></ul>
+    </section>
+</main>
+
+<footer class="site-footer">
+    <p>Audio is processed on the server for enhancement and deleted immediately after. Nothing is stored.</p>
+</footer>
+
+<template id="fileItemTemplate">
+    <li class="file-item" data-status="pending">
+        <div class="file-item-main">
+            <div class="file-item-icon" aria-hidden="true"><svg class="icon"><use href="#icon-wave"/></svg></div>
+            <div class="file-item-info">
+                <p class="file-item-name"></p>
+                <p class="file-item-meta"></p>
+            </div>
+            <div class="file-item-status">
+                <span class="status-badge status-badge-pending">Ready</span>
+            </div>
+            <button class="file-item-remove" type="button" aria-label="Remove file">
+                <svg class="icon icon-xs"><use href="#icon-close"/></svg>
+            </button>
+        </div>
+
+        <!-- Per-file overrides -->
+        <div class="file-item-options">
+            <label class="switch-row">
+                <input type="checkbox" class="file-item-demucs">
+                <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                <span>Isolate vocals</span>
+            </label>
+            <label class="select-row">
+                <span>Mode</span>
+                <select class="file-item-mode">
+                    <option value="balanced" selected>Balanced</option>
+                    <option value="aggressive">Aggressive</option>
+                    <option value="gentle">Gentle</option>
+                </select>
+            </label>
+            <label class="select-row">
+                <span>Format</span>
+                <select class="file-item-format">
+                    <option value="wav">WAV</option>
+                    <option value="mp3">MP3</option>
+                    <option value="flac">FLAC</option>
+                    <option value="ogg">OGG</option>
+                </select>
+            </label>
+        </div>
+
+        <div class="file-item-progress" hidden>
+            <div class="vu-meters" aria-hidden="true">
+                <div class="vu-meter">
+                    <svg viewBox="0 0 120 66" class="vu-face">
+                        <path class="vu-arc" d="M10 60 A50 50 0 0 1 110 60"/>
+                        <path class="vu-arc-hot" d="M84 16 A50 50 0 0 1 110 60"/>
+                        <g class="vu-needle-group">
+                            <line class="vu-needle" x1="60" y1="60" x2="60" y2="14"/>
+                            <circle class="vu-pivot" cx="60" cy="60" r="4"/>
+                        </g>
+                    </svg>
+                    <span class="vu-label">L</span>
+                </div>
+                <div class="vu-meter">
+                    <svg viewBox="0 0 120 66" class="vu-face">
+                        <path class="vu-arc" d="M10 60 A50 50 0 0 1 110 60"/>
+                        <path class="vu-arc-hot" d="M84 16 A50 50 0 0 1 110 60"/>
+                        <g class="vu-needle-group vu-needle-group-r">
+                            <line class="vu-needle" x1="60" y1="60" x2="60" y2="14"/>
+                            <circle class="vu-pivot" cx="60" cy="60" r="4"/>
+                        </g>
+                    </svg>
+                    <span class="vu-label">R</span>
+                </div>
+            </div>
+            <p class="progress-label">Processing… <span class="progress-timer">0s</span></p>
+        </div>
+
+        <p class="file-item-error" hidden></p>
+
+        <div class="file-item-result" hidden>
+            <div class="ab-compare-bar">
+                <span class="ab-compare-title">A/B Comparison:</span>
+                <div class="ab-toggle-group">
+                    <button type="button" class="ab-toggle-btn ab-btn-before" data-track="before">Original (Raw)</button>
+                    <button type="button" class="ab-toggle-btn ab-btn-after is-active" data-track="after">Enhanced (Clean)</button>
+                </div>
+                <span class="ab-hint">Toggle seamlessly while playing</span>
+            </div>
+
+            <div class="waveform-pair">
+                <div class="waveform-block waveform-block-before" data-track="before">
+                    <div class="waveform-header">
+                        <p class="waveform-label">Original Audio</p>
+                    </div>
+                    <canvas class="waveform-canvas waveform-before" width="600" height="60"></canvas>
+                    <audio class="audio-before" controls></audio>
+                </div>
+                <div class="waveform-block waveform-block-after is-active" data-track="after">
+                    <div class="waveform-header">
+                        <p class="waveform-label">Enhanced Audio</p>
+                    </div>
+                    <canvas class="waveform-canvas waveform-after" width="600" height="60"></canvas>
+                    <audio class="audio-after" controls></audio>
+                </div>
+            </div>
+            <a class="btn btn-primary download-link" download>
+                <svg class="icon icon-sm"><use href="#icon-download"/></svg>
+                Download enhanced audio
+            </a>
+        </div>
+    </li>
+</template>
+
+
+<template id="historyItemTemplate">
+    <li class="history-item">
+        <div class="history-item-icon" aria-hidden="true"><svg class="icon icon-xs"><use href="#icon-check"/></svg></div>
+        <div class="history-item-info">
+            <p class="history-item-name"></p>
+            <p class="history-item-meta"></p>
+        </div>
+        <a class="btn btn-ghost btn-small download-link" download>
+            <svg class="icon icon-xs"><use href="#icon-download"/></svg>
+            Download
+        </a>
+    </li>
+</template>
+
+<script>
+(function() {
+    var saved = null;
+    try { saved = localStorage.getItem("noise-remover-theme"); } catch(e) {}
+    var prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+    var theme = saved || (prefersLight ? "light" : "dark");
+    if (theme === "light") {
+        document.documentElement.setAttribute("data-theme", "light");
+    }
+    document.addEventListener("DOMContentLoaded", function() {
+        var btn = document.getElementById("themeToggle");
+        if (!btn) return;
+        if (theme === "light") {
+            btn.setAttribute("aria-pressed", "true");
+            btn.setAttribute("aria-label", "Switch to dark theme");
+        }
+        btn.addEventListener("click", function() {
+            var isLight = document.documentElement.getAttribute("data-theme") === "light";
+            var next = isLight ? "dark" : "light";
+            if (next === "light") {
+                document.documentElement.setAttribute("data-theme", "light");
+                btn.setAttribute("aria-pressed", "true");
+                btn.setAttribute("aria-label", "Switch to dark theme");
+            } else {
+                document.documentElement.removeAttribute("data-theme");
+                btn.setAttribute("aria-pressed", "false");
+                btn.setAttribute("aria-label", "Switch to light theme");
+            }
+            try { localStorage.setItem("noise-remover-theme", next); } catch(e) {}
+        });
+    });
+})();
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

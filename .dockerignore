@@ -1,0 +1,11 @@
+.git/
+.idea/
+.vscode/
+.agents/
+target/
+.venv/
+venv/
+__pycache__/
+*.log
+*.tmp
+
