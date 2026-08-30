@@ -116,6 +116,11 @@ public class DenoiseProcessRunner {
         }
 
         if (exitCode != 0) {
+            if (exitCode == 137) {
+                throw new AudioProcessingException(
+                        "Processing exceeded container memory limit (512MB RAM on Render free tier). Please try a shorter audio clip.",
+                        HttpStatus.UNPROCESSABLE_ENTITY);
+            }
             throw new AudioProcessingException(
                     friendlyScriptError(scriptOutput), HttpStatus.UNPROCESSABLE_ENTITY);
         }

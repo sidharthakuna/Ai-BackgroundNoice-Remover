@@ -132,7 +132,9 @@ def apply_deepfilternet(audio_data, atten_lim_db=30, post_filter=False):
     try:
         if _CACHED_DF_MODEL is None or _CACHED_DF_STATE is None or _CACHED_DF_POSTFILTER != post_filter:
             try:
-                torch.set_num_threads(min(4, max(1, os.cpu_count() or 2)))
+                # Cloud containers (Render free tier) allocate 0.1-1.0 vCPU.
+                # Setting 1-2 threads avoids severe CFS thread scheduling thrashing.
+                torch.set_num_threads(min(2, max(1, os.cpu_count() or 1)))
             except Exception:
                 pass
             _CACHED_DF_MODEL, _CACHED_DF_STATE, _ = init_df(post_filter=post_filter)
@@ -146,6 +148,7 @@ def apply_deepfilternet(audio_data, atten_lim_db=30, post_filter=False):
                 audio_tensor,
                 atten_lim_db=atten_lim_db
             ).squeeze().numpy().astype(np.float32)
+        del audio_tensor
         return result
     except Exception as exc:
         print(f"PROGRESS: DeepFilterNet processing fallback ({exc})")

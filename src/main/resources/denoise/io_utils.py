@@ -71,7 +71,10 @@ def load_and_split_channels(input_path):
         if raw_audio.ndim == 2:
             raw_audio = raw_audio.T
         if sr != SAMPLE_RATE:
-            raw_audio = librosa.resample(raw_audio, orig_sr=sr, target_sr=SAMPLE_RATE)
+            import math
+            from scipy.signal import resample_poly
+            g = math.gcd(int(sr), int(SAMPLE_RATE))
+            raw_audio = resample_poly(raw_audio, int(SAMPLE_RATE) // g, int(sr) // g, axis=-1).astype(np.float32)
     except Exception:
         raw_audio, _ = librosa.load(input_path, sr=SAMPLE_RATE, mono=False)
 

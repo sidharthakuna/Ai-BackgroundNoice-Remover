@@ -142,9 +142,9 @@ def apply_vad_gate(audio_data):
 
     speech_mask = speech_mask[:len(audio_data)]
 
+    import scipy.ndimage
     exp_samples = int(SAMPLE_RATE * 0.16)
-    expanded_mask = np.convolve(speech_mask.astype(float),
-                                 np.ones(exp_samples * 2), mode='same') > 0
+    expanded_mask = scipy.ndimage.binary_dilation(speech_mask, structure=np.ones(exp_samples * 2))
 
     target_vad = np.where(expanded_mask, 1.0, 0.20).astype(np.float64)
 

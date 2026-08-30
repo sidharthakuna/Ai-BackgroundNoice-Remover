@@ -1,6 +1,7 @@
 numpy
 scipy
 soundfile
+soxr
 librosa
 webrtcvad
 pyloudnorm
