@@ -62,11 +62,7 @@ RUN pip install --upgrade pip && \
 
 # Pre-download DeepFilterNet pre-trained neural models so they are cached in the image
 # This eliminates runtime download delay on cloud hosts like Render
-RUN python3 -c "import sys, types; from dataclasses import dataclass; \
-@dataclass \
-class AudioMetaData: sample_rate: int = 16000; num_frames: int = 0; num_channels: int = 1; bits_per_sample: int = 16; encoding: str = 'PCM_S'; \
-b = types.ModuleType('torchaudio.backend'); c = types.ModuleType('torchaudio.backend.common'); c.AudioMetaData = AudioMetaData; b.common = c; sys.modules['torchaudio.backend'] = b; sys.modules['torchaudio.backend.common'] = c; \
-from df.enhance import init_df; init_df(post_filter=False); init_df(post_filter=True)"
+RUN python3 -c "import sys, types; AudioMetaData = type('AudioMetaData', (), {'sample_rate': 16000, 'num_frames': 0, 'num_channels': 1, 'bits_per_sample': 16, 'encoding': 'PCM_S'}); b = types.ModuleType('torchaudio.backend'); c = types.ModuleType('torchaudio.backend.common'); c.AudioMetaData = AudioMetaData; b.common = c; sys.modules['torchaudio.backend'] = b; sys.modules['torchaudio.backend.common'] = c; from df.enhance import init_df; init_df(post_filter=False); init_df(post_filter=True)"
 
 
 # ==========================
