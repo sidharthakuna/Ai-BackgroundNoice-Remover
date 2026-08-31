@@ -147,10 +147,16 @@ public class AudioJobService {
 
         try {
             Path denoiseInputPath = uploadedPath;
-            if (uploadValidator.isVideoExtension(ext) || !ext.equalsIgnoreCase("wav")) {
+            try {
                 record.markProgress(JobStatus.EXTRACTING,
                         uploadValidator.isVideoExtension(ext) ? "Extracting audio track from video" : "Preparing audio track", 15);
                 denoiseInputPath = audioExtractor.extractAudioFromVideo(uploadedPath, jobDir, jobId);
+            } catch (Exception e) {
+                if (uploadValidator.isVideoExtension(ext)) {
+                    throw e;
+                }
+                log.warn("[job {}] FFmpeg audio pre-conversion fallback to raw input: {}", jobId, e.getMessage());
+                denoiseInputPath = uploadedPath;
             }
 
             Path scriptDir = scriptStager.stageInto(jobDir, jobId);

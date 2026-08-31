@@ -71,11 +71,19 @@ def load_and_split_channels(input_path):
         if raw_audio.ndim == 2:
             raw_audio = raw_audio.T
         if sr != SAMPLE_RATE:
-            import math
-            from scipy.signal import resample_poly
-            g = math.gcd(int(sr), int(SAMPLE_RATE))
-            raw_audio = resample_poly(raw_audio, int(SAMPLE_RATE) // g, int(sr) // g, axis=-1).astype(np.float32)
+            try:
+                import soxr
+                if raw_audio.ndim == 2:
+                    ch0 = soxr.resample(raw_audio[0], sr, SAMPLE_RATE)
+                    ch1 = soxr.resample(raw_audio[1], sr, SAMPLE_RATE)
+                    raw_audio = np.stack([ch0, ch1])
+                else:
+                    raw_audio = soxr.resample(raw_audio, sr, SAMPLE_RATE)
+            except Exception:
+                import librosa
+                raw_audio, _ = librosa.load(input_path, sr=SAMPLE_RATE, mono=False)
     except Exception:
+        import librosa
         raw_audio, _ = librosa.load(input_path, sr=SAMPLE_RATE, mono=False)
 
     raw_audio = np.nan_to_num(raw_audio, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)

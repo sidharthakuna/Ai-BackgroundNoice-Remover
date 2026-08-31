@@ -364,28 +364,6 @@
     if (theme === "light") {
         document.documentElement.setAttribute("data-theme", "light");
     }
-    document.addEventListener("DOMContentLoaded", function() {
-        var btn = document.getElementById("themeToggle");
-        if (!btn) return;
-        if (theme === "light") {
-            btn.setAttribute("aria-pressed", "true");
-            btn.setAttribute("aria-label", "Switch to dark theme");
-        }
-        btn.addEventListener("click", function() {
-            var isLight = document.documentElement.getAttribute("data-theme") === "light";
-            var next = isLight ? "dark" : "light";
-            if (next === "light") {
-                document.documentElement.setAttribute("data-theme", "light");
-                btn.setAttribute("aria-pressed", "true");
-                btn.setAttribute("aria-label", "Switch to dark theme");
-            } else {
-                document.documentElement.removeAttribute("data-theme");
-                btn.setAttribute("aria-pressed", "false");
-                btn.setAttribute("aria-label", "Switch to light theme");
-            }
-            try { localStorage.setItem("noise-remover-theme", next); } catch(e) {}
-        });
-    });
 })();
 </script>
 <script type="module" src="js/main.js"></script>

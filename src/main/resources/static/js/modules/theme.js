@@ -10,10 +10,13 @@ import { redrawAllWaveforms } from "./waveform.js";
  * @param {HTMLElement} toggleEl
  */
 export function initTheme(toggleEl) {
+    if (!toggleEl) return;
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     const prefersLight = window.matchMedia?.("(prefers-color-scheme: light)").matches;
-    const theme = saved || (prefersLight ? "light" : "dark");
-    applyTheme(theme, toggleEl, false);
+    const initialTheme = document.documentElement.getAttribute("data-theme") === "light"
+        ? "light"
+        : (saved || (prefersLight ? "light" : "dark"));
+    applyTheme(initialTheme, toggleEl, false);
 
     toggleEl.addEventListener("click", () => {
         const isLight = document.documentElement.getAttribute("data-theme") === "light";
@@ -24,12 +27,16 @@ export function initTheme(toggleEl) {
 function applyTheme(theme, toggleEl, shouldRedraw = false) {
     if (theme === "light") {
         document.documentElement.setAttribute("data-theme", "light");
-        toggleEl.setAttribute("aria-pressed", "true");
-        toggleEl.setAttribute("aria-label", "Switch to dark theme");
+        if (toggleEl) {
+            toggleEl.setAttribute("aria-pressed", "true");
+            toggleEl.setAttribute("aria-label", "Switch to dark theme");
+        }
     } else {
         document.documentElement.removeAttribute("data-theme");
-        toggleEl.setAttribute("aria-pressed", "false");
-        toggleEl.setAttribute("aria-label", "Switch to light theme");
+        if (toggleEl) {
+            toggleEl.setAttribute("aria-pressed", "false");
+            toggleEl.setAttribute("aria-label", "Switch to light theme");
+        }
     }
     localStorage.setItem(THEME_STORAGE_KEY, theme);
     if (shouldRedraw) {
