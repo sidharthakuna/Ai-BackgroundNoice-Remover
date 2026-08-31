@@ -23,6 +23,15 @@ COPY --from=builder /opt/java/openjdk /opt/java/openjdk
 ENV JAVA_HOME=/opt/java/openjdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
+# Prevent CPU thrashing on cloud containers (limits thread pools for PyTorch, OpenBLAS, MKL)
+ENV OMP_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
+ENV OPENBLAS_NUM_THREADS=1
+ENV VECLIB_MAXIMUM_THREADS=1
+ENV NUMEXPR_NUM_THREADS=1
+ENV TORCH_NUM_THREADS=1
+ENV PYTHONUNBUFFERED=1
+
 # Install FFmpeg, libsndfile and native build tools
 RUN apt-get update && apt-get install -y \
     ffmpeg \

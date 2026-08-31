@@ -61,7 +61,7 @@ def apply_agc(audio, target_rms=0.12, attack_ms=80, release_ms=400,
     max_boost = 10.0 ** (max_boost_db / 20.0)
 
     window = max(1, int(sr * 0.150))
-    rms = np.sqrt(uniform_filter1d(audio.astype(np.float64) ** 2, size=window) + 1e-12)
+    rms = np.sqrt(uniform_filter1d(audio.astype(np.float32) ** 2, size=window) + 1e-12)
     raw_gain = np.clip(target_rms / rms, min_gain, max_boost)
 
     # 1kHz control-rate envelope smoothing (1ms precision, 16x faster than per-sample loop)
@@ -98,7 +98,7 @@ def apply_compressor(audio, threshold_db=-26, ratio=3.5, sr=SAMPLE_RATE):
     """
     threshold_lin = 10.0 ** (threshold_db / 20.0)
     window = max(1, int(sr * 0.020))
-    rms = np.sqrt(uniform_filter1d(audio.astype(np.float64) ** 2, size=window) + 1e-12)
+    rms = np.sqrt(uniform_filter1d(audio.astype(np.float32) ** 2, size=window) + 1e-12)
     gain = np.ones_like(rms)
     above = rms > threshold_lin
     gain[above] = (threshold_lin + (rms[above] - threshold_lin) / ratio) / rms[above]

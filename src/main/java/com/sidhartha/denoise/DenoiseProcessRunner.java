@@ -68,6 +68,12 @@ public class DenoiseProcessRunner {
 
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.environment().put("PYTHONUNBUFFERED", "1");
+        pb.environment().put("OMP_NUM_THREADS", "1");
+        pb.environment().put("MKL_NUM_THREADS", "1");
+        pb.environment().put("OPENBLAS_NUM_THREADS", "1");
+        pb.environment().put("VECLIB_MAXIMUM_THREADS", "1");
+        pb.environment().put("NUMEXPR_NUM_THREADS", "1");
+        pb.environment().put("TORCH_NUM_THREADS", "1");
         pb.directory(scriptDir.toFile());
         pb.redirectErrorStream(true);
 

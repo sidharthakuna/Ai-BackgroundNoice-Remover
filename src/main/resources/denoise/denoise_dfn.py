@@ -37,33 +37,20 @@ its noise floor lowered, not the other way around).
 
 import os
 import sys
+
+# Prevent OpenBLAS / MKL / OMP / Torch thread explosion on container CFS CPU quotas
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["TORCH_NUM_THREADS"] = "1"
+
 import types
 from dataclasses import dataclass
 import numpy as np
 import torch
 from scipy.signal import butter, sosfiltfilt
 
-# Compatibility shim for DeepFilterNet on newer torchaudio versions (2.1+ / 2.12+)
-# where torchaudio.backend.common.AudioMetaData was removed from torchaudio.
-if "torchaudio.backend" not in sys.modules:
-    try:
-        @dataclass
-        class AudioMetaData:
-            sample_rate: int = 16000
-            num_frames: int = 0
-            num_channels: int = 1
-            bits_per_sample: int = 16
-            encoding: str = "PCM_S"
-
-        backend_mod = types.ModuleType("torchaudio.backend")
-        common_mod = types.ModuleType("torchaudio.backend.common")
-        common_mod.AudioMetaData = getattr(sys.modules.get("torchaudio", None), "AudioMetaData", AudioMetaData)
-        backend_mod.common = common_mod
-        sys.modules["torchaudio.backend"] = backend_mod
-        sys.modules["torchaudio.backend.common"] = common_mod
-    except Exception:
-        pass
-
+torch.set_num_threads(1)
 torch.set_grad_enabled(False)
 
 SAMPLE_RATE = 16000

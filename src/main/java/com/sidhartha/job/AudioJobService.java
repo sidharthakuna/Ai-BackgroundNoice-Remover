@@ -147,8 +147,9 @@ public class AudioJobService {
 
         try {
             Path denoiseInputPath = uploadedPath;
-            if (uploadValidator.isVideoExtension(ext)) {
-                record.markProgress(JobStatus.EXTRACTING, "Extracting audio track from video", 15);
+            if (uploadValidator.isVideoExtension(ext) || !ext.equalsIgnoreCase("wav")) {
+                record.markProgress(JobStatus.EXTRACTING,
+                        uploadValidator.isVideoExtension(ext) ? "Extracting audio track from video" : "Preparing audio track", 15);
                 denoiseInputPath = audioExtractor.extractAudioFromVideo(uploadedPath, jobDir, jobId);
             }
 

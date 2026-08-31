@@ -22,6 +22,12 @@ public class HealthController {
     @Value("${app.ffmpeg.path:ffmpeg}")
     private String ffmpegPath;
 
+    // Cache engine health status for 60 seconds to avoid spawning CPU-intensive subprocesses on frequent health-check pings
+    private static final long CACHE_TTL_MS = 60_000;
+    private final java.util.concurrent.atomic.AtomicLong lastEngineCheckTime = new java.util.concurrent.atomic.AtomicLong(0);
+    private final java.util.concurrent.atomic.AtomicBoolean cachedPythonOk = new java.util.concurrent.atomic.AtomicBoolean(true);
+    private final java.util.concurrent.atomic.AtomicBoolean cachedFfmpegOk = new java.util.concurrent.atomic.AtomicBoolean(true);
+
     public HealthController(DenoiseProcessRunner processRunner, JobStatusStore jobStatusStore) {
         this.processRunner = processRunner;
         this.jobStatusStore = jobStatusStore;
@@ -56,19 +62,30 @@ public class HealthController {
                 "totalInStore", jobStatusStore.getTotalJobsCount()
         ));
 
-        // Engine inspection
+        // Engine inspection (cached to avoid CPU thrashing on cloud health probes)
         String pythonExec = processRunner.resolvePythonExecutable();
-        boolean pythonAvailable = checkPythonAvailable(pythonExec);
-        boolean ffmpegAvailable = checkFfmpegAvailable(resolveFfmpeg());
+        String resolvedFfmpeg = resolveFfmpeg();
+        refreshEngineChecksIfExpired(pythonExec, resolvedFfmpeg);
 
         response.put("engines", Map.of(
                 "pythonExecutable", pythonExec,
-                "pythonAvailable", pythonAvailable,
-                "ffmpegExecutable", resolveFfmpeg(),
-                "ffmpegAvailable", ffmpegAvailable
+                "pythonAvailable", cachedPythonOk.get(),
+                "ffmpegExecutable", resolvedFfmpeg,
+                "ffmpegAvailable", cachedFfmpegOk.get()
         ));
 
         return response;
+    }
+
+    private void refreshEngineChecksIfExpired(String pythonExec, String ffmpegExec) {
+        long now = System.currentTimeMillis();
+        long last = lastEngineCheckTime.get();
+        if (now - last > CACHE_TTL_MS || last == 0) {
+            if (lastEngineCheckTime.compareAndSet(last, now)) {
+                cachedPythonOk.set(checkPythonAvailable(pythonExec));
+                cachedFfmpegOk.set(checkFfmpegAvailable(ffmpegExec));
+            }
+        }
     }
 
     private String resolveFfmpeg() {

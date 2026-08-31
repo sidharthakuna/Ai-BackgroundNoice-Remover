@@ -120,7 +120,7 @@ def apply_vad_gate(audio_data):
     rem = len(filtered_for_energy) % frame_length
     padded_full = np.pad(filtered_for_energy, (0, frame_length - rem if rem else 0))
     reshaped_frames = padded_full.reshape(-1, frame_length)
-    frame_rms_all = np.sqrt(np.mean(reshaped_frames.astype(np.float64) ** 2, axis=1))
+    frame_rms_all = np.sqrt(np.mean(reshaped_frames.astype(np.float32) ** 2, axis=1))
 
     noise_floor = np.percentile(frame_rms_all, 20)
     mumble_threshold = noise_floor * 3.5  # 3.5x above noise floor = likely mumble
@@ -146,7 +146,7 @@ def apply_vad_gate(audio_data):
     exp_samples = int(SAMPLE_RATE * 0.16)
     expanded_mask = scipy.ndimage.binary_dilation(speech_mask, structure=np.ones(exp_samples * 2))
 
-    target_vad = np.where(expanded_mask, 1.0, 0.20).astype(np.float64)
+    target_vad = np.where(expanded_mask, 1.0, 0.20).astype(np.float32)
 
     # 1kHz control-rate smoothing (16x faster than per-sample loop)
     step = 16

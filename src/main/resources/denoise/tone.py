@@ -152,7 +152,7 @@ def apply_deesser(audio_data, threshold_db=-24.0, max_attenuation_db=6.0):
     sibilance_band = sosfilt(sos_sib, audio_data)
 
     window = max(1, int(SAMPLE_RATE * 0.010))  # 10ms detection window
-    sib_rms = np.sqrt(uniform_filter1d(sibilance_band.astype(np.float64) ** 2, size=window) + 1e-12)
+    sib_rms = np.sqrt(uniform_filter1d(sibilance_band.astype(np.float32) ** 2, size=window) + 1e-12)
 
     thresh_lin = 10.0 ** (threshold_db / 20.0)
     over = sib_rms > thresh_lin
