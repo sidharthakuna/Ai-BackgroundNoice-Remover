@@ -73,5 +73,5 @@ COPY --from=builder /app/target/*.jar app.jar
 
 EXPOSE 8080
 
-# Use Serial GC and tight memory limits so Spring Boot only uses ~150MB, leaving 350MB free for Python & PyTorch in 512MB RAM containers
-ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xms64m", "-Xmx128m", "-XX:MaxMetaspaceSize=96m", "-XX:ReservedCodeCacheSize=48m", "-Xss512k", "-jar", "app.jar"]
+# Use Serial GC, 64MB max heap, and low metaspace/thread stack so Spring Boot only consumes ~120MB, leaving 380MB+ free for Python & PyTorch in 512MB RAM containers
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xms32m", "-Xmx64m", "-XX:MaxMetaspaceSize=64m", "-XX:ReservedCodeCacheSize=32m", "-Xss256k", "-jar", "app.jar"]
