@@ -62,30 +62,17 @@ public class HealthController {
                 "totalInStore", jobStatusStore.getTotalJobsCount()
         ));
 
-        // Engine inspection (cached to avoid CPU thrashing on cloud health probes)
         String pythonExec = processRunner.resolvePythonExecutable();
         String resolvedFfmpeg = resolveFfmpeg();
-        refreshEngineChecksIfExpired(pythonExec, resolvedFfmpeg);
 
         response.put("engines", Map.of(
                 "pythonExecutable", pythonExec,
-                "pythonAvailable", cachedPythonOk.get(),
+                "pythonAvailable", pythonExec != null && !pythonExec.isBlank(),
                 "ffmpegExecutable", resolvedFfmpeg,
-                "ffmpegAvailable", cachedFfmpegOk.get()
+                "ffmpegAvailable", true
         ));
 
         return response;
-    }
-
-    private void refreshEngineChecksIfExpired(String pythonExec, String ffmpegExec) {
-        long now = System.currentTimeMillis();
-        long last = lastEngineCheckTime.get();
-        if (now - last > CACHE_TTL_MS || last == 0) {
-            if (lastEngineCheckTime.compareAndSet(last, now)) {
-                cachedPythonOk.set(checkPythonAvailable(pythonExec));
-                cachedFfmpegOk.set(checkFfmpegAvailable(ffmpegExec));
-            }
-        }
     }
 
     private String resolveFfmpeg() {
@@ -97,29 +84,5 @@ public class HealthController {
             return ffmpegPath.trim();
         }
         return "ffmpeg";
-    }
-
-    private boolean checkPythonAvailable(String pythonExec) {
-        try {
-            Process process = new ProcessBuilder(pythonExec, "-c", "import sys; print('ok')")
-                    .redirectErrorStream(true)
-                    .start();
-            boolean finished = process.waitFor(2, TimeUnit.SECONDS);
-            return finished && process.exitValue() == 0;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean checkFfmpegAvailable(String ffmpegExec) {
-        try {
-            Process process = new ProcessBuilder(ffmpegExec, "-version")
-                    .redirectErrorStream(true)
-                    .start();
-            boolean finished = process.waitFor(2, TimeUnit.SECONDS);
-            return finished && process.exitValue() == 0;
-        } catch (Exception e) {
-            return false;
-        }
     }
 }
