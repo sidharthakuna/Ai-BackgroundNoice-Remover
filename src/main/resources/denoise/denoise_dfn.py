@@ -48,7 +48,30 @@ import types
 from dataclasses import dataclass
 import numpy as np
 import torch
-from scipy.signal import butter, sosfiltfilt
+from scipy.signal import butter, sosfiltfilt, stft, istft
+
+# Compatibility shim for DeepFilterNet on newer torchaudio versions (2.1+ / 2.12+)
+# where torchaudio.backend.common.AudioMetaData was removed from torchaudio.
+if "torchaudio.backend" not in sys.modules:
+    try:
+        @dataclass
+        class AudioMetaData:
+            sample_rate: int = 16000
+            num_frames: int = 0
+            num_channels: int = 1
+            bits_per_sample: int = 16
+            encoding: str = "PCM_S"
+
+        backend_mod = types.ModuleType("torchaudio.backend")
+        common_mod = types.ModuleType("torchaudio.backend.common")
+        common_mod.AudioMetaData = getattr(sys.modules.get("torchaudio", None), "AudioMetaData", AudioMetaData)
+        backend_mod.common = common_mod
+        sys.modules["torchaudio.backend"] = backend_mod
+        sys.modules["torchaudio.backend.common"] = common_mod
+        if "torchaudio" in sys.modules:
+            sys.modules["torchaudio"].backend = backend_mod
+    except Exception:
+        pass
 
 torch.set_num_threads(1)
 torch.set_grad_enabled(False)
@@ -72,22 +95,19 @@ def apply_lowpass(audio_data, cutoff_hz=7500):
     return sosfiltfilt(sos, audio_data).astype(np.float32)
 
 
-def spectral_subtract(signal, over_subtract=2.0, floor=0.05, n_fft=512, hop=128):
+def spectral_subtract(signal, over_subtract=2.0, floor=0.05, n_fft=512, hop=256):
     """
-    Stage 1.5: STFT-domain noise separation. Estimates a noise spectrum
-    from the quietest 15% of frames (by energy) across the whole signal,
-    then subtracts an over_subtract-scaled version of it from every
-    frame's magnitude spectrum, with a floor to avoid musical-noise
-    artifacts from over-subtracting.
+    Stage 1.5: Fast STFT-domain noise separation using Scipy.
+    Estimates a noise spectrum from the quietest 15% of frames (by energy)
+    across the whole signal, then subtracts an over_subtract-scaled version.
     """
     if len(signal) < n_fft:
         print(f"PROGRESS: spectral_subtract skipped, input too short ({len(signal)} samples)")
         return signal
 
-    import librosa
-    D = librosa.stft(signal, n_fft=n_fft, hop_length=hop, win_length=n_fft, window='hann')
-    mag = np.abs(D)
-    phase = np.angle(D)
+    f, t_axis, Zxx = stft(signal, fs=SAMPLE_RATE, window='hann', nperseg=n_fft, noverlap=n_fft - hop)
+    mag = np.abs(Zxx)
+    phase = np.angle(Zxx)
 
     frame_energy = np.sum(mag ** 2, axis=0)
     noise_thresh = np.percentile(frame_energy, 15)
@@ -99,8 +119,8 @@ def spectral_subtract(signal, over_subtract=2.0, floor=0.05, n_fft=512, hop=128)
     subtracted_mag = np.maximum(mag - over_subtract * noise_spectrum, floor * mag)
     D_clean = subtracted_mag * np.exp(1j * phase)
 
-    result = librosa.istft(D_clean, hop_length=hop, win_length=n_fft, window='hann', length=len(signal))
-    return result.astype(np.float32)
+    _, result = istft(D_clean, fs=SAMPLE_RATE, window='hann', nperseg=n_fft, noverlap=n_fft - hop)
+    return result[:len(signal)].astype(np.float32)
 
 
 
@@ -119,16 +139,14 @@ def apply_deepfilternet(audio_data, atten_lim_db=30, post_filter=False):
     try:
         if _CACHED_DF_MODEL is None or _CACHED_DF_STATE is None or _CACHED_DF_POSTFILTER != post_filter:
             try:
-                # Cloud containers (Render free tier) allocate 0.1-1.0 vCPU.
-                # Setting 1-2 threads avoids severe CFS thread scheduling thrashing.
-                torch.set_num_threads(min(2, max(1, os.cpu_count() or 1)))
+                torch.set_num_threads(1)
             except Exception:
                 pass
             _CACHED_DF_MODEL, _CACHED_DF_STATE, _ = init_df(post_filter=post_filter)
             _CACHED_DF_POSTFILTER = post_filter
 
         audio_tensor = torch.from_numpy(audio_data[np.newaxis, :]).float()
-        with torch.inference_mode():
+        with torch.no_grad():
             result = enhance(
                 _CACHED_DF_MODEL,
                 _CACHED_DF_STATE,

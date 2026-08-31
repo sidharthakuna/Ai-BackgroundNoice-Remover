@@ -129,29 +129,31 @@ def apply_vad_gate(audio_data):
         print(f"PROGRESS: near-zero noise floor ({noise_floor:.2e}), "
               f"mumble energy-check is not discriminating on this file")
 
-    speech_mask = np.zeros(len(pcm16_audio), dtype=bool)
-    for idx, fs in enumerate(range(0, len(pcm16_audio) - frame_length + 1, frame_length)):
-        vad_says_speech = vad_detector.is_speech(
-            pcm16_audio[fs:fs + frame_length].tobytes(), SAMPLE_RATE
-        )
+    num_frames = len(pcm16_audio) // frame_length
+    pcm_bytes = pcm16_audio.tobytes()
+    bytes_per_frame = frame_length * 2  # 16-bit PCM = 2 bytes per sample
+
+    frame_speech_mask = np.zeros(num_frames, dtype=bool)
+    for idx in range(num_frames):
+        b_offset = idx * bytes_per_frame
+        frame_bytes = pcm_bytes[b_offset:b_offset + bytes_per_frame]
+        vad_says_speech = vad_detector.is_speech(frame_bytes, SAMPLE_RATE)
         band_rms = frame_rms_all[idx] if idx < len(frame_rms_all) else 0.0
         energy_says_speech = band_rms > mumble_threshold
 
         if vad_says_speech or energy_says_speech:
-            speech_mask[fs:fs + frame_length] = True
+            frame_speech_mask[idx] = True
 
-    speech_mask = speech_mask[:len(audio_data)]
-
+    # Frame-level lookahead expansion (~180ms lookahead = 6 frames)
+    # Replaces sample-level dilation that took 21.5 billion operations down to <1ms
     import scipy.ndimage
-    exp_samples = int(SAMPLE_RATE * 0.16)
-    expanded_mask = scipy.ndimage.binary_dilation(speech_mask, structure=np.ones(exp_samples * 2))
+    exp_frames = int(np.ceil(0.160 / 0.030))  # 6 frames
+    expanded_frame_mask = scipy.ndimage.binary_dilation(
+        frame_speech_mask, structure=np.ones(exp_frames * 2 + 1)
+    )
 
-    target_vad = np.where(expanded_mask, 1.0, 0.20).astype(np.float32)
-
-    # 1kHz control-rate smoothing (16x faster than per-sample loop)
-    step = 16
-    down_target = target_vad[::step]
-    eff_sr = SAMPLE_RATE / step
+    down_target = np.where(expanded_frame_mask, 1.0, 0.20).astype(np.float32)
+    eff_sr = SAMPLE_RATE / frame_length  # ~33.33 Hz
     att_a = np.exp(-1.0 / (eff_sr * 0.030))
     rel_a = np.exp(-1.0 / (eff_sr * 0.150))
 
@@ -161,7 +163,15 @@ def apply_vad_gate(audio_data):
         a = att_a if down_target[i] > down_vad[i - 1] else rel_a
         down_vad[i] = a * down_vad[i - 1] + (1.0 - a) * down_target[i]
 
-    vad_gain = np.interp(np.arange(len(target_vad)), np.arange(0, len(target_vad), step), down_vad).astype(np.float32)
-    gated_audio = audio_data * vad_gain
+    # Smoothly map back to sample domain
+    frame_centers = np.arange(num_frames) * frame_length + frame_length // 2
+    vad_gain = np.interp(
+        np.arange(len(audio_data)),
+        frame_centers,
+        down_vad,
+        left=down_vad[0],
+        right=down_vad[-1]
+    ).astype(np.float32)
 
+    gated_audio = audio_data * vad_gain
     return gated_audio, vad_gain

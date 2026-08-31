@@ -64,8 +64,8 @@ def apply_agc(audio, target_rms=0.12, attack_ms=80, release_ms=400,
     rms = np.sqrt(uniform_filter1d(audio.astype(np.float32) ** 2, size=window) + 1e-12)
     raw_gain = np.clip(target_rms / rms, min_gain, max_boost)
 
-    # 1kHz control-rate envelope smoothing (1ms precision, 16x faster than per-sample loop)
-    step = 16
+    # 100Hz control-rate envelope smoothing (10ms precision)
+    step = 160
     down_gain = raw_gain[::step]
     eff_sr = sr / step
     att_a = np.exp(-1.0 / (eff_sr * attack_ms / 1000.0))
