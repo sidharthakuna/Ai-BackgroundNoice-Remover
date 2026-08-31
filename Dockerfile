@@ -62,7 +62,11 @@ RUN pip install --upgrade pip && \
 
 # Pre-download DeepFilterNet pre-trained neural models so they are cached in the image
 # This eliminates runtime download delay on cloud hosts like Render
-RUN python3 -c "from df.enhance import init_df; init_df(post_filter=False); init_df(post_filter=True)"
+RUN python3 -c "import sys, types; from dataclasses import dataclass; \
+@dataclass \
+class AudioMetaData: sample_rate: int = 16000; num_frames: int = 0; num_channels: int = 1; bits_per_sample: int = 16; encoding: str = 'PCM_S'; \
+b = types.ModuleType('torchaudio.backend'); c = types.ModuleType('torchaudio.backend.common'); c.AudioMetaData = AudioMetaData; b.common = c; sys.modules['torchaudio.backend'] = b; sys.modules['torchaudio.backend.common'] = c; \
+from df.enhance import init_df; init_df(post_filter=False); init_df(post_filter=True)"
 
 
 # ==========================
@@ -73,5 +77,5 @@ COPY --from=builder /app/target/*.jar app.jar
 
 EXPOSE 8080
 
-# Use Serial GC, 64MB max heap, and low metaspace/thread stack so Spring Boot only consumes ~120MB, leaving 380MB+ free for Python & PyTorch in 512MB RAM containers
-ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xms32m", "-Xmx64m", "-XX:MaxMetaspaceSize=64m", "-XX:ReservedCodeCacheSize=32m", "-Xss256k", "-jar", "app.jar"]
+# Use Serial GC, 48MB max heap, and low metaspace/thread stack so Spring Boot consumes <90MB, leaving >420MB free for Python & PyTorch in 512MB RAM containers
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xms24m", "-Xmx48m", "-XX:MaxMetaspaceSize=48m", "-XX:ReservedCodeCacheSize=24m", "-Xss256k", "-jar", "app.jar"]

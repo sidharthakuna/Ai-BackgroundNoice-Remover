@@ -96,34 +96,47 @@ export function createProcessingQueue(appState, callbacks) {
             }
 
             // ── Step 1: upload ────────────────────────────────────────
-            async function submit() {
+            async function submit(maxRetries = 3) {
                 const formData = new FormData();
                 formData.append("file", entry.file);
                 formData.append("demucs", String(entry.useDemucs));
                 formData.append("mode", entry.mode || "balanced");
                 formData.append("format", entry.format);
 
-                const xhr = await sendRequest(entry, "POST", API_ENDPOINT, {
-                    responseType: "json",
-                    body: formData,
-                    onUploadProgress: (e) => {
-                        if (e.lengthComputable && e.loaded >= e.total) {
-                            uploadComplete = true;
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        const xhr = await sendRequest(entry, "POST", API_ENDPOINT, {
+                            responseType: "json",
+                            body: formData,
+                            onUploadProgress: (e) => {
+                                if (e.lengthComputable && e.loaded >= e.total) {
+                                    uploadComplete = true;
+                                }
+                            },
+                        });
+                        if (xhr.status >= 500 && xhr.status <= 504 && attempt < maxRetries) {
+                            await abortableDelay(entry, 2500);
+                            continue;
                         }
-                    },
-                });
-                if (xhr.status < 200 || xhr.status >= 300) {
-                    throw appError(await parseErrorResponse(xhr));
+                        if (xhr.status < 200 || xhr.status >= 300) {
+                            throw appError(await parseErrorResponse(xhr));
+                        }
+                        const body = xhr.response;
+                        if (!body || !body.jobId) {
+                            throw appError("The server accepted the upload but didn't return a job id.");
+                        }
+                        return body.jobId;
+                    } catch (e) {
+                        if (attempt >= maxRetries || (e && e.name === "AbortError") || (e && e.isAppError)) {
+                            throw e;
+                        }
+                        await abortableDelay(entry, 2500);
+                    }
                 }
-                const body = xhr.response;
-                if (!body || !body.jobId) {
-                    throw appError("The server accepted the upload but didn't return a job id.");
-                }
-                return body.jobId;
             }
 
             // ── Step 2: poll status (with retry for transient 502/503/504 cloud proxy glitches) ────
-            async function pollOnce(jobId, maxRetries = 4) {
+            async function pollOnce(jobId, maxRetries = 8) {
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         const xhr = await sendRequest(entry, "GET", `/api/v1/jobs/${jobId}/status`, {
@@ -149,7 +162,7 @@ export function createProcessingQueue(appState, callbacks) {
                         }
                         return body;
                     } catch (e) {
-                        if (attempt >= maxRetries || (e && e.name === "AbortError")) {
+                        if (attempt >= maxRetries || (e && e.name === "AbortError") || (e && e.isAppError)) {
                             throw e;
                         }
                         await abortableDelay(entry, 2000);
@@ -158,14 +171,27 @@ export function createProcessingQueue(appState, callbacks) {
             }
 
             // ── Step 3: download the real result ──────────────────────
-            async function fetchResult(jobId) {
-                const xhr = await sendRequest(entry, "GET", `/api/v1/jobs/${jobId}/result`, {
-                    responseType: "blob",
-                });
-                if (xhr.status < 200 || xhr.status >= 300) {
-                    throw appError(await parseErrorResponse(xhr));
+            async function fetchResult(jobId, maxRetries = 4) {
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        const xhr = await sendRequest(entry, "GET", `/api/v1/jobs/${jobId}/result`, {
+                            responseType: "blob",
+                        });
+                        if (xhr.status >= 500 && xhr.status <= 504 && attempt < maxRetries) {
+                            await abortableDelay(entry, 2000);
+                            continue;
+                        }
+                        if (xhr.status < 200 || xhr.status >= 300) {
+                            throw appError(await parseErrorResponse(xhr));
+                        }
+                        return xhr.response;
+                    } catch (e) {
+                        if (attempt >= maxRetries || (e && e.name === "AbortError") || (e && e.isAppError)) {
+                            throw e;
+                        }
+                        await abortableDelay(entry, 2000);
+                    }
                 }
-                return xhr.response;
             }
 
             (async () => {
@@ -273,6 +299,10 @@ export function createProcessingQueue(appState, callbacks) {
             410: "The result is no longer available. It may have expired.",
             413: "The file is too large (over 100MB).",
             422: "The file couldn't be processed — it may be corrupt or in an unsupported format.",
+            500: "Internal server error. Please try a shorter audio clip.",
+            502: "The server is temporarily unavailable or restarting. Please retry in a few moments.",
+            503: "The server is currently busy. Please retry in a few moments.",
+            504: "The request timed out. Please try again.",
         };
         return genericByStatus[xhr.status] || `Something went wrong (HTTP ${xhr.status}).`;
     }

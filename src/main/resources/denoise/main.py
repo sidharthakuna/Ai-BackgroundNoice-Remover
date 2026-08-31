@@ -62,6 +62,8 @@ def run_pipeline(input_path, output_path, use_demucs=False, mode="balanced"):
     is_stereo = split["is_stereo"]
     source_is_real_stereo = split["source_is_real_stereo"]
 
+    import gc
+
     # Stage 1 + 1.5 (highpass, spectral subtraction)
     print("PROGRESS: Pre-filtering & spectral noise subtraction", flush=True)
     settings = denoise_dfn.MODE_SETTINGS.get(mode, denoise_dfn.MODE_SETTINGS["balanced"])
@@ -71,9 +73,11 @@ def run_pipeline(input_path, output_path, use_demucs=False, mode="balanced"):
         over_subtract=settings["over_subtract"],
         floor=settings["floor"]
     )
+    gc.collect()
 
     print("PROGRESS: Voice activity detection & gating", flush=True)
     audio_data, vad_gain = vad_gate.apply_vad_gate(audio_data)
+    gc.collect()
 
     print("PROGRESS: DeepFilterNet neural noise suppression", flush=True)
     audio_data = denoise_dfn.apply_deepfilternet(
@@ -81,16 +85,20 @@ def run_pipeline(input_path, output_path, use_demucs=False, mode="balanced"):
         atten_lim_db=settings["atten_lim_db"],
         post_filter=settings.get("post_filter", False)
     )
+    gc.collect()
 
     print("PROGRESS: Dynamic range leveling & limiting", flush=True)
     audio_data = dynamics.process(audio_data)
+    gc.collect()
 
     if use_demucs:
         print("PROGRESS: Isolating vocal stems (Demucs)", flush=True)
         audio_data = demucs_stage.apply_demucs_separation(audio_data)
+        gc.collect()
 
     print("PROGRESS: EQ, dynamic de-essing & loudness normalization", flush=True)
     audio_data = tone.process(audio_data, vad_gain)
+    gc.collect()
 
     print("PROGRESS: Reconstructing output", flush=True)
     final_output = io_utils.reconstruct_output(
@@ -98,7 +106,6 @@ def run_pipeline(input_path, output_path, use_demucs=False, mode="balanced"):
     )
     io_utils.save_output(output_path, final_output, is_stereo)
 
-    import gc
     gc.collect()
 
 

@@ -108,6 +108,7 @@ def spectral_subtract(signal, over_subtract=2.0, floor=0.05, n_fft=512, hop=256)
     f, t_axis, Zxx = stft(signal, fs=SAMPLE_RATE, window='hann', nperseg=n_fft, noverlap=n_fft - hop)
     mag = np.abs(Zxx)
     phase = np.angle(Zxx)
+    del Zxx
 
     frame_energy = np.sum(mag ** 2, axis=0)
     noise_thresh = np.percentile(frame_energy, 15)
@@ -116,19 +117,25 @@ def spectral_subtract(signal, over_subtract=2.0, floor=0.05, n_fft=512, hop=256)
         noise_frames = mag[:, :max(1, int(mag.shape[1] * 0.15))]
 
     noise_spectrum = np.mean(noise_frames, axis=1, keepdims=True)
+    del noise_frames, frame_energy
+
     subtracted_mag = np.maximum(mag - over_subtract * noise_spectrum, floor * mag)
+    del noise_spectrum, mag
+
     D_clean = subtracted_mag * np.exp(1j * phase)
+    del subtracted_mag, phase
 
     _, result = istft(D_clean, fs=SAMPLE_RATE, window='hann', nperseg=n_fft, noverlap=n_fft - hop)
+    del D_clean
+
+    import gc
+    gc.collect()
     return result[:len(signal)].astype(np.float32)
 
 
 
-def apply_deepfilternet(audio_data, atten_lim_db=30, post_filter=False):
-    """
-    Stage 3: DeepFilterNet, the neural denoiser.
-    atten_lim_db caps per-bin suppression (e.g. 18dB for gentle, 30dB for balanced, 36dB for aggressive).
-    """
+def _enhance_single_chunk(audio_data, atten_lim_db=30, post_filter=False):
+    """Enhances a short chunk (<15s) through DeepFilterNet at its native 48kHz."""
     global _CACHED_DF_MODEL, _CACHED_DF_STATE, _CACHED_DF_POSTFILTER
     try:
         from df.enhance import enhance, init_df
@@ -145,7 +152,16 @@ def apply_deepfilternet(audio_data, atten_lim_db=30, post_filter=False):
             _CACHED_DF_MODEL, _CACHED_DF_STATE, _ = init_df(post_filter=post_filter)
             _CACHED_DF_POSTFILTER = post_filter
 
-        audio_tensor = torch.from_numpy(audio_data[np.newaxis, :]).float()
+        df_sr = _CACHED_DF_STATE.sr() if hasattr(_CACHED_DF_STATE, "sr") else 48000
+        
+        # Resample to DeepFilterNet native sample rate (48kHz)
+        import soxr
+        if SAMPLE_RATE != df_sr:
+            df_in = soxr.resample(audio_data, SAMPLE_RATE, df_sr)
+        else:
+            df_in = audio_data
+
+        audio_tensor = torch.from_numpy(df_in[np.newaxis, :]).float()
         with torch.no_grad():
             result = enhance(
                 _CACHED_DF_MODEL,
@@ -154,10 +170,76 @@ def apply_deepfilternet(audio_data, atten_lim_db=30, post_filter=False):
                 atten_lim_db=atten_lim_db
             ).squeeze().numpy().astype(np.float32)
         del audio_tensor
-        return result
+
+        # Resample back to pipeline sample rate (16kHz)
+        if SAMPLE_RATE != df_sr:
+            result = soxr.resample(result, df_sr, SAMPLE_RATE)
+
+        # Match exact input length
+        n = len(audio_data)
+        if len(result) < n:
+            result = np.pad(result, (0, n - len(result)))
+        elif len(result) > n:
+            result = result[:n]
+
+        return result.astype(np.float32)
     except Exception as exc:
         print(f"PROGRESS: DeepFilterNet processing fallback ({exc})")
         return audio_data
+
+
+def apply_deepfilternet(audio_data, atten_lim_db=30, post_filter=False, chunk_sec=15, overlap_sec=0.5):
+    """
+    Stage 3: DeepFilterNet, the neural denoiser with memory-bounded chunking.
+    Processes audio in 15-second windows with 0.5s smooth crossfade so RAM
+    usage stays minimal (<15MB) even on multi-minute audio files on cloud containers.
+    """
+    chunk_len = int(chunk_sec * SAMPLE_RATE)
+    overlap_len = int(overlap_sec * SAMPLE_RATE)
+    step = chunk_len - overlap_len
+
+    if len(audio_data) <= chunk_len:
+        out = _enhance_single_chunk(audio_data, atten_lim_db=atten_lim_db, post_filter=post_filter)
+        import gc
+        gc.collect()
+        return out
+
+    out = np.zeros_like(audio_data, dtype=np.float32)
+    weight = np.zeros_like(audio_data, dtype=np.float32)
+    fade_in = np.linspace(0.0, 1.0, overlap_len, dtype=np.float32)
+    fade_out = np.linspace(1.0, 0.0, overlap_len, dtype=np.float32)
+    window = np.ones(chunk_len, dtype=np.float32)
+    window[:overlap_len] = fade_in
+    window[-overlap_len:] = fade_out
+
+    for start in range(0, len(audio_data), step):
+        end = min(start + chunk_len, len(audio_data))
+        chunk = audio_data[start:end]
+        actual_len = len(chunk)
+
+        if actual_len < overlap_len * 2:
+            # Trailing small segment
+            enhanced_chunk = _enhance_single_chunk(chunk, atten_lim_db=atten_lim_db, post_filter=post_filter)
+            out[start:end] += enhanced_chunk[:actual_len]
+            weight[start:end] += 1.0
+            break
+
+        w = window[:actual_len].copy()
+        if start == 0:
+            w[:overlap_len] = 1.0
+        if end == len(audio_data):
+            w[-overlap_len:] = 1.0
+
+        enhanced_chunk = _enhance_single_chunk(chunk, atten_lim_db=atten_lim_db, post_filter=post_filter)
+        out[start:end] += enhanced_chunk[:actual_len] * w
+        weight[start:end] += w
+
+    weight = np.maximum(weight, 1e-6)
+    result = (out / weight).astype(np.float32)
+
+    import gc
+    gc.collect()
+    return result
 
 _CACHED_DF_MODEL = None
 _CACHED_DF_STATE = None

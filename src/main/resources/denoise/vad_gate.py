@@ -173,5 +173,11 @@ def apply_vad_gate(audio_data):
         right=down_vad[-1]
     ).astype(np.float32)
 
+    del pcm16_audio, pcm_bytes, filtered_for_energy, padded_full, reshaped_frames
+    del frame_rms_all, frame_speech_mask, expanded_frame_mask, down_target, down_vad
+
+    import gc
+    gc.collect()
+
     gated_audio = audio_data * vad_gain
     return gated_audio, vad_gain
