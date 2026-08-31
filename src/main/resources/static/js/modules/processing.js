@@ -122,22 +122,39 @@ export function createProcessingQueue(appState, callbacks) {
                 return body.jobId;
             }
 
-            // ── Step 2: poll status ───────────────────────────────────
-            async function pollOnce(jobId) {
-                const xhr = await sendRequest(entry, "GET", `/api/v1/jobs/${jobId}/status`, {
-                    responseType: "json",
-                });
-                if (xhr.status < 200 || xhr.status >= 300) {
-                    throw appError(await parseErrorResponse(xhr));
+            // ── Step 2: poll status (with retry for transient 502/503/504 cloud proxy glitches) ────
+            async function pollOnce(jobId, maxRetries = 4) {
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        const xhr = await sendRequest(entry, "GET", `/api/v1/jobs/${jobId}/status`, {
+                            responseType: "json",
+                        });
+                        if (xhr.status >= 500 && xhr.status <= 504 && attempt < maxRetries) {
+                            await abortableDelay(entry, 2000);
+                            continue;
+                        }
+                        if (xhr.status < 200 || xhr.status >= 300) {
+                            throw appError(await parseErrorResponse(xhr));
+                        }
+                        const body = xhr.response;
+                        if (!body) {
+                            if (attempt < maxRetries) {
+                                await abortableDelay(entry, 1500);
+                                continue;
+                            }
+                            throw appError("Received an unreadable status response from the server.");
+                        }
+                        if (body.status === "FAILED") {
+                            throw appError(body.errorMessage || "Audio processing failed.");
+                        }
+                        return body;
+                    } catch (e) {
+                        if (attempt >= maxRetries || (e && e.name === "AbortError")) {
+                            throw e;
+                        }
+                        await abortableDelay(entry, 2000);
+                    }
                 }
-                const body = xhr.response;
-                if (!body) {
-                    throw appError("Received an unreadable status response from the server.");
-                }
-                if (body.status === "FAILED") {
-                    throw appError(body.errorMessage || "Audio processing failed.");
-                }
-                return body;
             }
 
             // ── Step 3: download the real result ──────────────────────
