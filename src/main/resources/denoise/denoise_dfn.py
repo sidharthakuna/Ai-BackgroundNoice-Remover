@@ -1,12 +1,28 @@
 """
 denoise_dfn.py — the actual noise-removal stages (original Stages 1, 1.5, 3).
 
-Three sub-stages, run in order by process():
+Three sub-stages, called directly by main.py's run_pipeline() in this
+order (each mode-scaled via MODE_SETTINGS below):
   1. High-pass filter — removes rumble below 80Hz.
   2. Spectral subtraction — STFT-domain noise-profile subtraction.
   3. DeepFilterNet (DFN) — the neural denoiser doing the heavy lifting.
 
-Also present, but NOT yet part of process() — apply_lowpass(), a fixed
+NOTE: this module intentionally has no process()/run() entry point of its
+own. main.py calls apply_highpass(), spectral_subtract(), and
+apply_deepfilternet() directly, each with settings pulled from
+MODE_SETTINGS.get(mode, ...) — see run_pipeline() there for the exact
+call sequence. An earlier version of this file also defined a process()
+that re-implemented the same three-stage sequence internally, but nothing
+ever called it (main.py had already switched to calling the stage
+functions directly with mode-aware settings) — it was dead code kept in
+sync with main.py by hand, which is exactly the kind of duplication this
+package's other modules explicitly avoid (see dynamics.py process() and
+tone.py process(), which ARE the real, called entry points for their
+respective files). It was removed rather than fixed forward: if you're
+looking for "the function that runs this file's stages," that's
+run_pipeline() in main.py, not something in this file.
+
+Also present, but NOT yet part of the pipeline — apply_lowpass(), a fixed
 ceiling above 7500Hz by default. See that function's own docstring for
 why it's opt-in rather than wired into the default pipeline, and why
 its cutoff can't go as high as 8000Hz at this pipeline's sample rate.
@@ -204,25 +220,3 @@ MODE_SETTINGS = {
     "balanced": {"over_subtract": 2.0, "floor": 0.05, "atten_lim_db": 30, "post_filter": False},
     "aggressive": {"over_subtract": 2.8, "floor": 0.02, "atten_lim_db": 36, "post_filter": True},
 }
-
-
-def process(audio_data, mode="balanced"):
-    """Runs all three noise-removal sub-stages in order with mode parameters.
-    Modes:
-      - 'gentle': 18dB cap, milder suppression for light room hum or studio voiceovers.
-      - 'balanced': 30dB cap, standard balanced suppression.
-      - 'aggressive': 36dB cap with post_filter, higher over-subtraction for noisy environments.
-    """
-    settings = MODE_SETTINGS.get(mode, MODE_SETTINGS["balanced"])
-    audio_data = apply_highpass(audio_data)
-    audio_data = spectral_subtract(
-        audio_data,
-        over_subtract=settings["over_subtract"],
-        floor=settings["floor"]
-    )
-    audio_data = apply_deepfilternet(
-        audio_data,
-        atten_lim_db=settings["atten_lim_db"],
-        post_filter=settings.get("post_filter", False)
-    )
-    return audio_data

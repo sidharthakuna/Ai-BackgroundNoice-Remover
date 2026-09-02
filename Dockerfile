@@ -64,6 +64,17 @@ RUN pip install --upgrade pip && \
 # This eliminates runtime download delay on cloud hosts like Render
 RUN python3 -c "import sys, types; AudioMetaData = type('AudioMetaData', (), {'sample_rate': 16000, 'num_frames': 0, 'num_channels': 1, 'bits_per_sample': 16, 'encoding': 'PCM_S'}); b = types.ModuleType('torchaudio.backend'); c = types.ModuleType('torchaudio.backend.common'); c.AudioMetaData = AudioMetaData; b.common = c; sys.modules['torchaudio.backend'] = b; sys.modules['torchaudio.backend.common'] = c; from df.enhance import init_df; init_df(post_filter=False); init_df(post_filter=True)"
 
+# Pre-download the Demucs "htdemucs" model (the same one demucs_stage.py invokes via
+# `demucs.separate --two-stems=vocals`) so its weights are cached in the image too.
+# WHY THIS MATTERS: without this, the model is pulled from the network the first time
+# any user ticks "Isolate vocals (Demucs)" in production -- inside that request, on
+# whatever bandwidth the container has, with no progress feedback to the caller. That
+# alone can consume most of a request's time budget on a slow connection, and if the
+# download stalls or the host can't reach the model repository, the request fails
+# outright. Baking the weights into the image removes that live download from the
+# request path entirely, exactly like the DeepFilterNet pre-download above.
+RUN python3 -c "from demucs.pretrained import get_model; get_model('htdemucs')"
+
 
 # ==========================
 # Application
