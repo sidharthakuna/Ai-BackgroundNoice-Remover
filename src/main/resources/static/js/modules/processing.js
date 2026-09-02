@@ -62,6 +62,19 @@ export function createProcessingQueue(appState, callbacks) {
         }
     }
 
+    // ── Shared retry policy for all three steps below (submit/pollOnce/fetchResult) ──
+    // 500-504: transient cloud proxy / origin glitches (Render, and similar platforms,
+    // can bounce a request with one of these while an instance is restarting, mid-deploy,
+    // or waking from the free tier's idle sleep).
+    // 429: the platform's own edge/proxy telling us to back off — most commonly seen here
+    // in the same "instance isn't fully up yet" window as the codes above, rather than an
+    // application-level rate limit (this app's own backend never returns 429; see
+    // GlobalExceptionHandler). Since it shares a root cause with 502/503/504 in practice,
+    // it gets the same short, bounded retry instead of failing the whole job outright.
+    function isRetryableStatus(status) {
+        return status === 429 || (status >= 500 && status <= 504);
+    }
+
     function processFile(entry) {
         return new Promise((resolve) => {
             entry.status = "processing";
@@ -114,7 +127,7 @@ export function createProcessingQueue(appState, callbacks) {
                                 }
                             },
                         });
-                        if (xhr.status >= 500 && xhr.status <= 504 && attempt < maxRetries) {
+                        if (isRetryableStatus(xhr.status) && attempt < maxRetries) {
                             await abortableDelay(entry, 2500);
                             continue;
                         }
@@ -135,14 +148,14 @@ export function createProcessingQueue(appState, callbacks) {
                 }
             }
 
-            // ── Step 2: poll status (with retry for transient 502/503/504 cloud proxy glitches) ────
+            // ── Step 2: poll status (with retry for transient 429/502/503/504 cloud proxy glitches) ────
             async function pollOnce(jobId, maxRetries = 8) {
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         const xhr = await sendRequest(entry, "GET", `/api/v1/jobs/${jobId}/status`, {
                             responseType: "json",
                         });
-                        if (xhr.status >= 500 && xhr.status <= 504 && attempt < maxRetries) {
+                        if (isRetryableStatus(xhr.status) && attempt < maxRetries) {
                             await abortableDelay(entry, 2000);
                             continue;
                         }
@@ -177,7 +190,7 @@ export function createProcessingQueue(appState, callbacks) {
                         const xhr = await sendRequest(entry, "GET", `/api/v1/jobs/${jobId}/result`, {
                             responseType: "blob",
                         });
-                        if (xhr.status >= 500 && xhr.status <= 504 && attempt < maxRetries) {
+                        if (isRetryableStatus(xhr.status) && attempt < maxRetries) {
                             await abortableDelay(entry, 2000);
                             continue;
                         }
@@ -299,6 +312,7 @@ export function createProcessingQueue(appState, callbacks) {
             410: "The result is no longer available. It may have expired.",
             413: "The file is too large (over 100MB).",
             422: "The file couldn't be processed — it may be corrupt or in an unsupported format.",
+            429: "The server is still starting up. Please wait a few seconds and try again.",
             500: "Internal server error. Please try a shorter audio clip.",
             502: "The server is temporarily unavailable or restarting. Please retry in a few moments.",
             503: "The server is currently busy. Please retry in a few moments.",
@@ -432,4 +446,3 @@ export function createProcessingQueue(appState, callbacks) {
 
     return { queueProcessing };
 }
-
