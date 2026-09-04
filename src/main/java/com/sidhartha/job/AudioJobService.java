@@ -2,6 +2,7 @@ package com.sidhartha.job;
 
 import com.sidhartha.denoise.DenoiseProcessRunner;
 import com.sidhartha.denoise.DenoiseScriptStager;
+import com.sidhartha.denoise.DenoiseServiceClient;
 import com.sidhartha.exception.AudioProcessingException;
 import com.sidhartha.media.FfmpegAudioExtractor;
 import com.sidhartha.media.FfmpegFormatConverter;
@@ -23,8 +24,8 @@ import java.util.UUID;
 /**
  * Orchestrates one audio-enhancement job end to end: validate the
  * upload, stage temp storage, extract audio from video if needed, run
- * the denoise pipeline, convert to the requested output format, and
- * clean up — updating the job's JobRecord as it goes.
+ * the denoise pipeline (via persistent Python microservice or fallback),
+ * convert to the requested output format, and clean up.
  */
 @Service
 public class AudioJobService {
@@ -45,7 +46,25 @@ public class AudioJobService {
     private final FfmpegFormatConverter formatConverter;
     private final DenoiseScriptStager scriptStager;
     private final DenoiseProcessRunner processRunner;
+    private final DenoiseServiceClient serviceClient;
     private final JobStatusStore jobStatusStore;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AudioJobService(UploadValidator uploadValidator,
+                           FfmpegAudioExtractor audioExtractor,
+                           FfmpegFormatConverter formatConverter,
+                           DenoiseScriptStager scriptStager,
+                           DenoiseProcessRunner processRunner,
+                           DenoiseServiceClient serviceClient,
+                           JobStatusStore jobStatusStore) {
+        this.uploadValidator = uploadValidator;
+        this.audioExtractor = audioExtractor;
+        this.formatConverter = formatConverter;
+        this.scriptStager = scriptStager;
+        this.processRunner = processRunner;
+        this.serviceClient = serviceClient;
+        this.jobStatusStore = jobStatusStore;
+    }
 
     public AudioJobService(UploadValidator uploadValidator,
                            FfmpegAudioExtractor audioExtractor,
@@ -53,19 +72,13 @@ public class AudioJobService {
                            DenoiseScriptStager scriptStager,
                            DenoiseProcessRunner processRunner,
                            JobStatusStore jobStatusStore) {
-        this.uploadValidator = uploadValidator;
-        this.audioExtractor = audioExtractor;
-        this.formatConverter = formatConverter;
-        this.scriptStager = scriptStager;
-        this.processRunner = processRunner;
-        this.jobStatusStore = jobStatusStore;
+        this(uploadValidator, audioExtractor, formatConverter, scriptStager, processRunner,
+                new DenoiseServiceClient(), jobStatusStore);
     }
 
     @jakarta.annotation.PostConstruct
     public void init() {
-        jobStatusStore.setEvictionListener(record -> {
-            cleanupJobRecordDir(record);
-        });
+        jobStatusStore.setEvictionListener(this::cleanupJobRecordDir);
     }
 
     public JobRecord acceptAndStageJob(MultipartFile file, boolean useDemucs, String mode, String outputFormat) {
@@ -159,14 +172,23 @@ public class AudioJobService {
                 denoiseInputPath = uploadedPath;
             }
 
-            Path scriptDir = scriptStager.stageInto(jobDir, jobId);
-
-            record.markProgress(JobStatus.DENOISING, "Removing background noise", 30);
-            processRunner.run(scriptDir, denoiseInputPath, outputPath, useDemucs, normMode, jobId,
-                    line -> {
-                        int pct = computeProgressPercentage(line);
-                        record.markProgress(JobStatus.DENOISING, describeProgress(line), pct);
-                    });
+            // Primary: Use persistent Python microservice for instant inference and 0ms cold-start
+            if (serviceClient != null && serviceClient.isAvailable()) {
+                log.info("[job {}] Dispatching to persistent Python AI microservice", jobId);
+                record.markProgress(JobStatus.DENOISING, "Processing with persistent AI engine", 30);
+                serviceClient.process(denoiseInputPath, outputPath, normMode, useDemucs, jobId,
+                        event -> record.markProgress(JobStatus.DENOISING, event.message(), event.progress()));
+            } else {
+                // Secondary Fallback: Subprocess runner
+                log.info("[job {}] Python microservice unavailable, falling back to subprocess runner", jobId);
+                Path scriptDir = scriptStager.stageInto(jobDir, jobId);
+                record.markProgress(JobStatus.DENOISING, "Removing background noise", 30);
+                processRunner.run(scriptDir, denoiseInputPath, outputPath, useDemucs, normMode, jobId,
+                        line -> {
+                            int pct = computeProgressPercentage(line);
+                            record.markProgress(JobStatus.DENOISING, describeProgress(line), pct);
+                        });
+            }
 
             Path finalPath = outputPath;
             if (!format.equals("wav")) {
@@ -189,7 +211,10 @@ public class AudioJobService {
     }
 
     public void cancelJob(String jobId) {
-        log.info("[job {}] Cancelling job and killing running processes", jobId);
+        log.info("[job {}] Cancelling job and killing running tasks", jobId);
+        if (serviceClient != null) {
+            serviceClient.cancel(jobId);
+        }
         processRunner.cancel(jobId);
         audioExtractor.cancel(jobId);
         formatConverter.cancel(jobId);
@@ -242,11 +267,10 @@ public class AudioJobService {
         if (line.contains("pre-filtering")) return 45;
         if (line.contains("voice activity")) return 55;
         if (line.contains("deepfilternet")) return 70;
-        if (line.contains("dynamic range")) return 80;
-        if (line.contains("isolating vocal")) return 85;
-        if (line.contains("loudness normalization")) return 90;
-        if (line.contains("reconstructing")) return 95;
-        if (line.contains("done")) return 98;
+        if (line.contains("dynamic range") || line.contains("dynamics")) return 85;
+        if (line.contains("loudness") || line.contains("mastering")) return 92;
+        if (line.contains("reconstructing")) return 97;
+        if (line.contains("done")) return 99;
         return 60;
     }
 

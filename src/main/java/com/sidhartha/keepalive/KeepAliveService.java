@@ -32,6 +32,7 @@ public class KeepAliveService {
 
     public KeepAliveService() {
         this(HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(10))
                 .build());
     }
@@ -67,8 +68,8 @@ public class KeepAliveService {
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             log.info("[keep-alive] Self-ping to {} -> Status {}", pingUrl, response.statusCode());
-        } catch (Exception e) {
-            log.warn("[keep-alive] Self-ping to {} failed: {}", pingUrl, e.getMessage());
+        } catch (Throwable t) {
+            log.warn("[keep-alive] Self-ping to {} failed: {}", pingUrl, t.getMessage());
         }
     }
 

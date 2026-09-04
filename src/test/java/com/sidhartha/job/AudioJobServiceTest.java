@@ -72,4 +72,21 @@ class AudioJobServiceTest {
         Mockito.verify(extractor).cancel(jobId);
         Mockito.verify(converter).cancel(jobId);
     }
+
+    @Test
+    void cancelJob_withMockedServiceClient_triggersServiceClientCancel() {
+        var mockClient = Mockito.mock(com.sidhartha.denoise.DenoiseServiceClient.class);
+        AudioJobService serviceWithClient = new AudioJobService(
+                validator, extractor, converter, stager, runner, mockClient, store);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "speech.wav", "audio/wav", "dummy content".getBytes());
+        JobRecord record = serviceWithClient.acceptAndStageJob(file, false, "balanced", "wav");
+        String jobId = record.getJobId();
+
+        serviceWithClient.cancelJob(jobId);
+
+        Mockito.verify(mockClient).cancel(jobId);
+        Mockito.verify(runner).cancel(jobId);
+    }
 }

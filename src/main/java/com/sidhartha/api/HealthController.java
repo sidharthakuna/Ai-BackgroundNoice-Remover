@@ -1,36 +1,37 @@
 package com.sidhartha.api;
 
 import com.sidhartha.denoise.DenoiseProcessRunner;
+import com.sidhartha.denoise.DenoiseServiceClient;
 import com.sidhartha.job.JobStatusStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 @RestController
 public class HealthController {
 
     private final DenoiseProcessRunner processRunner;
+    private final DenoiseServiceClient serviceClient;
     private final JobStatusStore jobStatusStore;
 
     @Value("${app.ffmpeg.path:ffmpeg}")
     private String ffmpegPath;
 
-    // Cache engine health status for 60 seconds to avoid spawning CPU-intensive subprocesses on frequent health-check pings
-    private static final long CACHE_TTL_MS = 60_000;
-    private final java.util.concurrent.atomic.AtomicLong lastEngineCheckTime = new java.util.concurrent.atomic.AtomicLong(0);
-    private final java.util.concurrent.atomic.AtomicBoolean cachedPythonOk = new java.util.concurrent.atomic.AtomicBoolean(true);
-    private final java.util.concurrent.atomic.AtomicBoolean cachedFfmpegOk = new java.util.concurrent.atomic.AtomicBoolean(true);
+    @org.springframework.beans.factory.annotation.Autowired
+    public HealthController(DenoiseProcessRunner processRunner,
+                            DenoiseServiceClient serviceClient,
+                            JobStatusStore jobStatusStore) {
+        this.processRunner = processRunner;
+        this.serviceClient = serviceClient;
+        this.jobStatusStore = jobStatusStore;
+    }
 
     public HealthController(DenoiseProcessRunner processRunner, JobStatusStore jobStatusStore) {
-        this.processRunner = processRunner;
-        this.jobStatusStore = jobStatusStore;
+        this(processRunner, new DenoiseServiceClient(), jobStatusStore);
     }
 
     @GetMapping("/health")
@@ -39,7 +40,7 @@ public class HealthController {
         response.put("status", "UP");
         response.put("timestamp", Instant.now().toString());
 
-        // System resources
+        // System JVM resources
         Runtime runtime = Runtime.getRuntime();
         long maxMem = runtime.maxMemory() / (1024 * 1024);
         long totalMem = runtime.totalMemory() / (1024 * 1024);
@@ -65,12 +66,21 @@ public class HealthController {
         String pythonExec = processRunner.resolvePythonExecutable();
         String resolvedFfmpeg = resolveFfmpeg();
 
-        response.put("engines", Map.of(
-                "pythonExecutable", pythonExec,
-                "pythonAvailable", pythonExec != null && !pythonExec.isBlank(),
-                "ffmpegExecutable", resolvedFfmpeg,
-                "ffmpegAvailable", true
-        ));
+        Map<String, Object> engines = new HashMap<>();
+        engines.put("pythonExecutable", pythonExec);
+        engines.put("pythonAvailable", pythonExec != null && !pythonExec.isBlank());
+        engines.put("ffmpegExecutable", resolvedFfmpeg);
+        engines.put("ffmpegAvailable", true);
+
+        if (serviceClient != null) {
+            boolean microserviceUp = serviceClient.isAvailable();
+            engines.put("pythonMicroserviceUp", microserviceUp);
+            if (microserviceUp) {
+                engines.put("pythonMicroserviceMetrics", serviceClient.checkHealth());
+            }
+        }
+
+        response.put("engines", engines);
 
         return response;
     }

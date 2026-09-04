@@ -75,10 +75,17 @@ init_df(post_filter=True)"
 # Pre-download Demucs htdemucs weights into image cache
 RUN python3 -c "from demucs.pretrained import get_model; get_model('htdemucs')"
 
+# Copy Python AI Microservice package
+COPY python_service/ /app/python_service/
+
+# Copy container entrypoint script
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 # Copy built Spring Boot application JAR
 COPY --from=builder /app/target/*.jar app.jar
 
 EXPOSE 8080
 
-# Serial GC, 40MB max heap, low metaspace/thread stack so Spring Boot consumes <85MB, leaving >420MB for Python in 512MB RAM containers
-ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xms20m", "-Xmx40m", "-XX:MaxMetaspaceSize=40m", "-XX:ReservedCodeCacheSize=20m", "-Xss256k", "-jar", "app.jar"]
+# Launches entrypoint.sh: starts Python AI Microservice (127.0.0.1:5000), pre-warms models, and starts Spring Boot
+ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]
