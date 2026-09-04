@@ -1,9 +1,9 @@
-numpy
-scipy
-soundfile
-soxr
-librosa
-webrtcvad
-pyloudnorm
+numpy>=1.24.0
+scipy>=1.11.0
+soundfile>=0.12.0
+soxr>=0.3.7
+librosa>=0.10.0
+webrtcvad>=2.0.10
+pyloudnorm>=0.1.1
 deepfilternet==0.5.6
-demucs
+demucs>=4.0.1

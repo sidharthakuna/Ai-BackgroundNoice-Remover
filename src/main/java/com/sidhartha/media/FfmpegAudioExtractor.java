@@ -40,7 +40,7 @@ public class FfmpegAudioExtractor {
         ProcessBuilder pb = new ProcessBuilder(
                 exec, "-nostdin", "-y", "-i", videoPath.toString(),
                 "-vn",                  // drop video stream entirely
-                "-ar", "16000",          // extract directly at DSP native 16kHz
+                "-ar", "48000",          // extract directly at DSP native 48kHz studio rate
                 "-acodec", "pcm_s16le",  // plain PCM WAV
                 "-loglevel", "error",
                 extractedPath.toString());
@@ -113,7 +113,11 @@ public class FfmpegAudioExtractor {
     public boolean cancel(String jobId) {
         Process process = activeProcesses.remove(jobId);
         if (process != null && process.isAlive()) {
-            log.info("[job {}] Terminating active FFmpeg extraction process", jobId);
+            log.info("[job {}] Terminating active FFmpeg extraction process tree", jobId);
+            try {
+                process.toHandle().descendants().forEach(ProcessHandle::destroyForcibly);
+            } catch (Exception ignored) {
+            }
             process.destroyForcibly();
             return true;
         }

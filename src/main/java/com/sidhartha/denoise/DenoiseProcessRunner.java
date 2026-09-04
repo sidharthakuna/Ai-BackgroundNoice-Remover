@@ -94,7 +94,7 @@ public class DenoiseProcessRunner {
             }
             boolean finished = process.waitFor(PROCESS_TIMEOUT_MINUTES, TimeUnit.MINUTES);
             if (!finished) {
-                process.destroyForcibly();
+                killProcessTree(process);
                 throw new AudioProcessingException(
                         "Processing timed out after " + PROCESS_TIMEOUT_MINUTES + " minutes.",
                         HttpStatus.REQUEST_TIMEOUT);
@@ -106,9 +106,7 @@ public class DenoiseProcessRunner {
                     HttpStatus.INTERNAL_SERVER_ERROR, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            if (process != null) {
-                process.destroyForcibly();
-            }
+            killProcessTree(process);
             throw new AudioProcessingException(
                     "Processing was cancelled or interrupted.", HttpStatus.INTERNAL_SERVER_ERROR, e);
         } finally {
@@ -140,11 +138,21 @@ public class DenoiseProcessRunner {
     public boolean cancel(String jobId) {
         Process process = activeProcesses.remove(jobId);
         if (process != null && process.isAlive()) {
-            log.info("[job {}] Terminating active Python process", jobId);
-            process.destroyForcibly();
+            log.info("[job {}] Terminating active Python process tree", jobId);
+            killProcessTree(process);
             return true;
         }
         return false;
+    }
+
+    private void killProcessTree(Process process) {
+        if (process != null && process.isAlive()) {
+            try {
+                process.toHandle().descendants().forEach(ProcessHandle::destroyForcibly);
+            } catch (Exception ignored) {
+            }
+            process.destroyForcibly();
+        }
     }
 
     private String friendlyScriptError(String scriptOutput) {

@@ -136,7 +136,11 @@ public class FfmpegFormatConverter {
     public boolean cancel(String jobId) {
         Process process = activeProcesses.remove(jobId);
         if (process != null && process.isAlive()) {
-            log.info("[job {}] Terminating active FFmpeg conversion process", jobId);
+            log.info("[job {}] Terminating active FFmpeg conversion process tree", jobId);
+            try {
+                process.toHandle().descendants().forEach(ProcessHandle::destroyForcibly);
+            } catch (Exception ignored) {
+            }
             process.destroyForcibly();
             return true;
         }

@@ -10,3 +10,7 @@ services:
         value: "*"
       - key: APP_JOBS_RETENTION_HOURS
         value: "2"
+      - key: APP_KEEPALIVE_ENABLED
+        value: "true"
+      - key: APP_MAX_CONCURRENT_JOBS
+        value: "1"
