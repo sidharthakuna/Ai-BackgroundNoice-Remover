@@ -37,8 +37,11 @@ if "torchaudio.backend" not in sys.modules:
         backend_mod.common = common_mod
         sys.modules["torchaudio.backend"] = backend_mod
         sys.modules["torchaudio.backend.common"] = common_mod
-        if "torchaudio" in sys.modules:
-            sys.modules["torchaudio"].backend = backend_mod
+        try:
+            import torchaudio
+            torchaudio.backend = backend_mod
+        except Exception:
+            pass
     except Exception:
         pass
 

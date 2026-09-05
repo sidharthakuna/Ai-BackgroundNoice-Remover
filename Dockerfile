@@ -15,11 +15,12 @@ ENV OMP_NUM_THREADS=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8080
 
-# Install FFmpeg and libsndfile
+# Install FFmpeg, libsndfile, git, curl, and build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
     curl \
+    git \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,24 +36,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
     --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
-# 2. Pre-download DeepFilterNet3 neural weights into container image cache
-RUN python3 -c "\
-import sys, types; \
-AudioMetaData = type('AudioMetaData', (), {'sample_rate': 48000, 'num_frames': 0, 'num_channels': 1, 'bits_per_sample': 16, 'encoding': 'PCM_S'}); \
-b = types.ModuleType('torchaudio.backend'); \
-c = types.ModuleType('torchaudio.backend.common'); \
-c.AudioMetaData = AudioMetaData; \
-b.common = c; \
-sys.modules['torchaudio.backend'] = b; \
-sys.modules['torchaudio.backend.common'] = c; \
-from df.enhance import init_df; \
-init_df(post_filter=False); \
-init_df(post_filter=True)"
+# 2. Pre-download neural weights into container image cache
+COPY scripts/ /app/scripts/
+RUN python3 scripts/warmup_models.py
 
-# 3. Pre-download Demucs htdemucs weights into container image cache
-RUN python3 -c "from demucs.pretrained import get_model; get_model('htdemucs')"
-
-# 4. Copy backend application and frontend static files
+# 3. Copy backend application and frontend static files
 COPY app/ /app/app/
 COPY static/ /app/static/
 
