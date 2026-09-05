@@ -5,8 +5,8 @@ test_chunker.py — Unit tests for overlap-add block chunking for long audio pro
 import numpy as np
 import pytest
 
-from python_service.config import SAMPLE_RATE
-from python_service.pipeline.chunker import process_audio_chunked_or_direct
+from app.config import SAMPLE_RATE
+from app.denoise.chunker import process_audio_chunked_or_direct
 
 
 def test_chunker_preserves_length_and_continuity():

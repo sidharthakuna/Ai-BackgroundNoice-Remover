@@ -1,29 +1,11 @@
 # ============================================================================
-# Stage 1: Build Java Application with Maven
-# ============================================================================
-
-FROM eclipse-temurin:21-jdk AS builder
-
-WORKDIR /app
-
-COPY . .
-
-RUN chmod +x mvnw
-RUN ./mvnw clean package -DskipTests
-
-
-# ============================================================================
-# Stage 2: Runtime Environment (Python 3.11-slim + Java 21 JRE + FFmpeg)
+# AI Background Noise Remover — Production Container (Render Free Tier 512MB)
+# Ultra-lean Python 3.11-slim runtime with pre-warmed DeepFilterNet3 & Demucs
 # ============================================================================
 
 FROM python:3.11-slim
 
-# Copy Java 21 runtime directly from builder stage
-COPY --from=builder /opt/java/openjdk /opt/java/openjdk
-ENV JAVA_HOME=/opt/java/openjdk
-ENV PATH="${JAVA_HOME}/bin:${PATH}"
-
-# Prevent CPU thrashing on container CFS quotas (limits thread pools for PyTorch, OpenBLAS, MKL)
+# Prevent thread pool thrashing on container CPU quotas
 ENV OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
@@ -33,32 +15,27 @@ ENV OMP_NUM_THREADS=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8080
 
-# Install FFmpeg, libsndfile and native build tools
+# Install FFmpeg and libsndfile
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
     curl \
     build-essential \
-    git \
-    && curl https://sh.rustup.rs -sSf | sh -s -- -y \
     && rm -rf /var/lib/apt/lists/*
-
-ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /app
 
-# Install PyTorch CPU-only first for maximum caching efficiency
+# 1. Install PyTorch CPU-only first for layer caching efficiency
 COPY requirements.txt .
 
-RUN pip install --upgrade pip && \
+RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
     torch==2.1.2 \
     torchaudio==2.1.2 \
     --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir -r requirements.txt && \
-    rm -rf /root/.cargo /root/.rustup
+    pip install --no-cache-dir -r requirements.txt
 
-# Pre-download DeepFilterNet3 neural weights into image cache
+# 2. Pre-download DeepFilterNet3 neural weights into container image cache
 RUN python3 -c "\
 import sys, types; \
 AudioMetaData = type('AudioMetaData', (), {'sample_rate': 48000, 'num_frames': 0, 'num_channels': 1, 'bits_per_sample': 16, 'encoding': 'PCM_S'}); \
@@ -72,20 +49,14 @@ from df.enhance import init_df; \
 init_df(post_filter=False); \
 init_df(post_filter=True)"
 
-# Pre-download Demucs htdemucs weights into image cache
+# 3. Pre-download Demucs htdemucs weights into container image cache
 RUN python3 -c "from demucs.pretrained import get_model; get_model('htdemucs')"
 
-# Copy Python AI Microservice package
-COPY python_service/ /app/python_service/
-
-# Copy container entrypoint script
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
-
-# Copy built Spring Boot application JAR
-COPY --from=builder /app/target/*.jar app.jar
+# 4. Copy backend application and frontend static files
+COPY app/ /app/app/
+COPY static/ /app/static/
 
 EXPOSE 8080
 
-# Launches entrypoint.sh: starts Python AI Microservice (127.0.0.1:5000), pre-warms models, and starts Spring Boot
-ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]
+# Starts single-worker Uvicorn: binds directly to $PORT dynamically assigned by Render
+CMD ["sh", "-c", "exec python3 -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]

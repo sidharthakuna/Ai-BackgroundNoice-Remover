@@ -5,11 +5,13 @@ test_dsp.py — Unit tests for studio 48kHz audio DSP processing modules.
 import numpy as np
 import pytest
 
-from python_service.config import SAMPLE_RATE
-from python_service.dsp.highpass import apply_highpass
-from python_service.dsp.spectral_gate import apply_spectral_gating
-from python_service.dsp.dynamics import apply_dynamics
-from python_service.dsp.tone import apply_tone_mastering
+from app.config import SAMPLE_RATE
+from app.denoise.dsp import (
+    apply_highpass,
+    apply_spectral_gating,
+    apply_dynamics,
+    apply_tone_mastering
+)
 
 
 def generate_sine_wave(freq_hz: float, duration_sec: float = 1.0, sr: int = SAMPLE_RATE) -> np.ndarray:

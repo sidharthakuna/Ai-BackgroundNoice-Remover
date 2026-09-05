@@ -7,8 +7,8 @@ import tempfile
 import numpy as np
 import pytest
 
-from python_service.config import SAMPLE_RATE
-from python_service.audio_io import encode_mid_side, decode_mid_side, save_audio, load_audio
+from app.config import SAMPLE_RATE
+from app.denoise.audio_io import encode_mid_side, decode_mid_side, save_audio, load_audio
 
 
 def test_mid_side_encode_decode_identity():
