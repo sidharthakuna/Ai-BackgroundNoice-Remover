@@ -16,7 +16,11 @@ public record JobStatusResponse(
         String originalFilename,
         String mode,
         String format,
-        long processingTimeMs
+        long processingTimeMs,
+        int queuePosition,
+        Double audioDurationSeconds,
+        Integer channels,
+        Integer sampleRate
 ) {
     public static JobStatusResponse from(JobRecord record) {
         return new JobStatusResponse(
@@ -29,7 +33,11 @@ public record JobStatusResponse(
                 record.getOriginalFilename(),
                 record.getMode(),
                 record.getOutputFormat(),
-                record.getProcessingTimeMs()
+                record.getProcessingTimeMs(),
+                record.getQueuePosition(),
+                record.getAudioDurationSeconds(),
+                record.getChannels(),
+                record.getSampleRate()
         );
     }
 }

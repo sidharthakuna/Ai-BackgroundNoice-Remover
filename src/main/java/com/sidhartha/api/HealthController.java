@@ -3,6 +3,8 @@ package com.sidhartha.api;
 import com.sidhartha.denoise.DenoiseProcessRunner;
 import com.sidhartha.denoise.DenoiseServiceClient;
 import com.sidhartha.job.JobStatusStore;
+import com.sidhartha.queue.JobQueueService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,21 +19,30 @@ public class HealthController {
     private final DenoiseProcessRunner processRunner;
     private final DenoiseServiceClient serviceClient;
     private final JobStatusStore jobStatusStore;
+    private final JobQueueService jobQueueService;
 
     @Value("${app.ffmpeg.path:ffmpeg}")
     private String ffmpegPath;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public HealthController(DenoiseProcessRunner processRunner,
                             DenoiseServiceClient serviceClient,
-                            JobStatusStore jobStatusStore) {
+                            JobStatusStore jobStatusStore,
+                            JobQueueService jobQueueService) {
         this.processRunner = processRunner;
         this.serviceClient = serviceClient;
         this.jobStatusStore = jobStatusStore;
+        this.jobQueueService = jobQueueService;
+    }
+
+    public HealthController(DenoiseProcessRunner processRunner,
+                            DenoiseServiceClient serviceClient,
+                            JobStatusStore jobStatusStore) {
+        this(processRunner, serviceClient, jobStatusStore, null);
     }
 
     public HealthController(DenoiseProcessRunner processRunner, JobStatusStore jobStatusStore) {
-        this(processRunner, new DenoiseServiceClient(), jobStatusStore);
+        this(processRunner, new DenoiseServiceClient(), jobStatusStore, null);
     }
 
     @GetMapping("/health")
@@ -62,6 +73,14 @@ public class HealthController {
                 "failed", jobStatusStore.getFailedJobsCount(),
                 "totalInStore", jobStatusStore.getTotalJobsCount()
         ));
+
+        if (jobQueueService != null) {
+            response.put("queue", Map.of(
+                    "queueDepth", jobQueueService.getQueueDepth(),
+                    "isJobRunning", jobQueueService.isJobRunning(),
+                    "currentRunningJobId", jobQueueService.getCurrentRunningJobId() != null ? jobQueueService.getCurrentRunningJobId() : "none"
+            ));
+        }
 
         String pythonExec = processRunner.resolvePythonExecutable();
         String resolvedFfmpeg = resolveFfmpeg();

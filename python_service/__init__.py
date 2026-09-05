@@ -1,7 +1,6 @@
 """
-python_service — High-performance persistent AI Noise Removal microservice.
-Runs locally at 127.0.0.1:5000 inside the Render container.
-Pre-warms neural models in RAM and streams real-time DSP progress events.
+python_service — Persistent AI Audio Background Noise Remover Microservice.
+Provides pre-warmed neural enhancement, DSP filtering, and NDJSON streaming.
 """
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"

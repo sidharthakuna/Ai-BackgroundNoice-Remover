@@ -1,18 +1,18 @@
 """
-engine.py — Pre-warmed DeepFilterNet3 neural model manager and memory monitor.
-Keeps AI models resident in RAM to avoid cold-start delays on incoming jobs.
-Provides cooperative cancellation tokens and post-job memory recycling.
+model_registry.py — Neural model registry and cooperative job cancellation manager.
+Pre-warms DeepFilterNet3 in RAM to eliminate cold starts, lazy-loads Demucs,
+and coordinates job cancellation tokens.
 """
 
-import gc
 import os
 import sys
 import types
 import threading
 from dataclasses import dataclass
+from typing import Optional, Tuple, Dict, Any
 import torch
 
-# Limit internal OpenMP/PyTorch thread counts to prevent CPU throttling
+# Limit internal OpenMP/PyTorch thread counts to avoid CPU starvation
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -43,8 +43,8 @@ if "torchaudio.backend" not in sys.modules:
         pass
 
 
-class ModelManager:
-    """Manages pre-loaded neural network weights and active job cancellation."""
+class ModelRegistry:
+    """Manages neural network weights lifecycle and cooperative cancellation tokens."""
 
     def __init__(self):
         self._df_model_standard = None
@@ -53,24 +53,24 @@ class ModelManager:
         self._df_state_postfilter = None
         self._demucs_model = None
         self._lock = threading.Lock()
-        self._cancellation_tokens = {}
+        self._cancellation_tokens: Dict[str, bool] = {}
 
-    def preload_models(self):
+    def preload_models(self) -> None:
         """Pre-loads DeepFilterNet3 neural models at microservice startup."""
-        print("[engine] Pre-warming DeepFilterNet3 neural models in RAM...", flush=True)
+        print("[model_registry] Pre-warming DeepFilterNet3 neural models in RAM...", flush=True)
         try:
             from df.enhance import init_df
             # Standard model (post_filter=False)
             self._df_model_standard, self._df_state_standard, _ = init_df(post_filter=False)
-            print("[engine] Standard DeepFilterNet3 model loaded successfully.", flush=True)
+            print("[model_registry] Standard DeepFilterNet3 model loaded successfully.", flush=True)
 
             # Post-filter model (post_filter=True)
             self._df_model_postfilter, self._df_state_postfilter, _ = init_df(post_filter=True)
-            print("[engine] Post-filter DeepFilterNet3 model loaded successfully.", flush=True)
+            print("[model_registry] Post-filter DeepFilterNet3 model loaded successfully.", flush=True)
         except Exception as exc:
-            print(f"[engine] Warning: Could not pre-warm DeepFilterNet models ({exc}). Will load on-demand.", flush=True)
+            print(f"[model_registry] Warning: Could not pre-warm DeepFilterNet models ({exc}). Will load on-demand.", flush=True)
 
-    def get_deepfilternet_model(self, post_filter: bool = False):
+    def get_deepfilternet_model(self, post_filter: bool = False) -> Tuple[Any, Any]:
         """Returns pre-warmed DeepFilterNet3 model and state."""
         with self._lock:
             if post_filter:
@@ -84,18 +84,18 @@ class ModelManager:
                     self._df_model_standard, self._df_state_standard, _ = init_df(post_filter=False)
                 return self._df_model_standard, self._df_state_standard
 
-    def get_demucs_model(self):
+    def get_demucs_model(self) -> Any:
         """Lazy loads Demucs model only when requested to conserve base memory."""
         with self._lock:
             if self._demucs_model is None:
-                print("[engine] Loading Demucs htdemucs model...", flush=True)
+                print("[model_registry] Loading Demucs htdemucs model...", flush=True)
                 from demucs.pretrained import get_model
                 self._demucs_model = get_model("htdemucs")
                 self._demucs_model.eval()
-                print("[engine] Demucs model ready.", flush=True)
+                print("[model_registry] Demucs model ready.", flush=True)
             return self._demucs_model
 
-    def register_job(self, job_id: str):
+    def register_job(self, job_id: str) -> None:
         with self._lock:
             self._cancellation_tokens[job_id] = False
 
@@ -103,7 +103,7 @@ class ModelManager:
         with self._lock:
             if job_id in self._cancellation_tokens:
                 self._cancellation_tokens[job_id] = True
-                print(f"[engine] Cancellation token set for job {job_id}", flush=True)
+                print(f"[model_registry] Cancellation token set for job {job_id}", flush=True)
                 return True
             return False
 
@@ -111,30 +111,13 @@ class ModelManager:
         with self._lock:
             return self._cancellation_tokens.get(job_id, False)
 
-    def unregister_job(self, job_id: str):
+    def unregister_job(self, job_id: str) -> None:
         with self._lock:
             self._cancellation_tokens.pop(job_id, None)
 
-    def cleanup_memory(self):
-        """Forces immediate garbage collection to reclaim memory for 512MB RAM budget."""
-        gc.collect()
-
-    def get_memory_info(self) -> dict:
-        """Returns current process memory consumption."""
-        rss_mb = 0.0
-        try:
-            # Linux /proc/self/status
-            if os.path.exists("/proc/self/status"):
-                with open("/proc/self/status", "r") as f:
-                    for line in f:
-                        if line.startswith("VmRSS:"):
-                            rss_mb = float(line.split()[1]) / 1024.0
-                            break
-        except Exception:
-            pass
-
+    def get_status(self) -> Dict[str, Any]:
+        """Returns model residency status for /health diagnostics."""
         return {
-            "rss_mb": round(rss_mb, 2),
             "dfn_standard_loaded": self._df_model_standard is not None,
             "dfn_postfilter_loaded": self._df_model_postfilter is not None,
             "demucs_loaded": self._demucs_model is not None,
@@ -142,5 +125,4 @@ class ModelManager:
         }
 
 
-# Global singleton instance
-model_manager = ModelManager()
+model_registry = ModelRegistry()

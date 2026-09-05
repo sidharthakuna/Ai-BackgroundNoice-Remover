@@ -7,8 +7,10 @@ import com.sidhartha.exception.AudioProcessingException;
 import com.sidhartha.media.FfmpegAudioExtractor;
 import com.sidhartha.media.FfmpegFormatConverter;
 import com.sidhartha.media.UploadValidator;
+import com.sidhartha.queue.JobQueueService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
@@ -22,10 +24,12 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Orchestrates one audio-enhancement job end to end: validate the
- * upload, stage temp storage, extract audio from video if needed, run
- * the denoise pipeline (via persistent Python microservice or fallback),
- * convert to the requested output format, and clean up.
+ * Orchestrates one audio-enhancement job end to end:
+ * Validates the upload, stages temporary storage, queues execution
+ * via JobQueueService (concurrency limit = 1 for Render Free Tier 512MB RAM),
+ * extracts audio from video if needed, runs the denoise pipeline (via
+ * persistent Python microservice or fallback), converts to the requested
+ * output format, and cleans up disk artifacts.
  */
 @Service
 public class AudioJobService {
@@ -48,15 +52,17 @@ public class AudioJobService {
     private final DenoiseProcessRunner processRunner;
     private final DenoiseServiceClient serviceClient;
     private final JobStatusStore jobStatusStore;
+    private final JobQueueService jobQueueService;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public AudioJobService(UploadValidator uploadValidator,
                            FfmpegAudioExtractor audioExtractor,
                            FfmpegFormatConverter formatConverter,
                            DenoiseScriptStager scriptStager,
                            DenoiseProcessRunner processRunner,
                            DenoiseServiceClient serviceClient,
-                           JobStatusStore jobStatusStore) {
+                           JobStatusStore jobStatusStore,
+                           JobQueueService jobQueueService) {
         this.uploadValidator = uploadValidator;
         this.audioExtractor = audioExtractor;
         this.formatConverter = formatConverter;
@@ -64,6 +70,18 @@ public class AudioJobService {
         this.processRunner = processRunner;
         this.serviceClient = serviceClient;
         this.jobStatusStore = jobStatusStore;
+        this.jobQueueService = jobQueueService != null ? jobQueueService : new JobQueueService();
+    }
+
+    public AudioJobService(UploadValidator uploadValidator,
+                           FfmpegAudioExtractor audioExtractor,
+                           FfmpegFormatConverter formatConverter,
+                           DenoiseScriptStager scriptStager,
+                           DenoiseProcessRunner processRunner,
+                           DenoiseServiceClient serviceClient,
+                           JobStatusStore jobStatusStore) {
+        this(uploadValidator, audioExtractor, formatConverter, scriptStager, processRunner,
+                serviceClient, jobStatusStore, new JobQueueService());
     }
 
     public AudioJobService(UploadValidator uploadValidator,
@@ -73,7 +91,7 @@ public class AudioJobService {
                            DenoiseProcessRunner processRunner,
                            JobStatusStore jobStatusStore) {
         this(uploadValidator, audioExtractor, formatConverter, scriptStager, processRunner,
-                new DenoiseServiceClient(), jobStatusStore);
+                new DenoiseServiceClient(), jobStatusStore, new JobQueueService());
     }
 
     @jakarta.annotation.PostConstruct
@@ -130,11 +148,17 @@ public class AudioJobService {
                         "runJob called for unknown jobId " + jobId
                                 + " — acceptAndStageJob() must run before runJob()"));
 
+        // Enqueue to single-worker queue to guarantee Render 512MB RAM stability
+        jobQueueService.submit(record, () -> executeJobInternal(record, originalFilename, useDemucs, mode, outputFormat));
+    }
+
+    private void executeJobInternal(JobRecord record, String originalFilename, boolean useDemucs, String mode, String outputFormat) {
+        String jobId = record.getJobId();
         String ext = uploadValidator.extractAndValidateExtension(originalFilename);
         String format = uploadValidator.normalizeOutputFormat(outputFormat);
         String normMode = uploadValidator.normalizeMode(mode);
 
-        log.info("[job {}] starting: file='{}' demucs={} mode={} outputFormat={}",
+        log.info("[job {}] starting processing: file='{}' demucs={} mode={} outputFormat={}",
                 jobId, originalFilename, useDemucs, normMode, format);
 
         Path jobDir = record.getJobDir();
@@ -212,6 +236,9 @@ public class AudioJobService {
 
     public void cancelJob(String jobId) {
         log.info("[job {}] Cancelling job and killing running tasks", jobId);
+        if (jobQueueService != null) {
+            jobQueueService.cancelIfQueued(jobId);
+        }
         if (serviceClient != null) {
             serviceClient.cancel(jobId);
         }
@@ -263,15 +290,19 @@ public class AudioJobService {
     private int computeProgressPercentage(String rawLine) {
         if (rawLine == null) return 30;
         String line = rawLine.toLowerCase();
-        if (line.contains("analyzing input")) return 35;
-        if (line.contains("pre-filtering")) return 45;
-        if (line.contains("voice activity")) return 55;
-        if (line.contains("deepfilternet")) return 70;
-        if (line.contains("dynamic range") || line.contains("dynamics")) return 85;
-        if (line.contains("loudness") || line.contains("mastering")) return 92;
+        if (line.contains("loading")) return 10;
+        if (line.contains("isolating") || line.contains("demucs")) return 20;
+        if (line.contains("stereo") || line.contains("mid/side")) return 35;
+        if (line.contains("rumble") || line.contains("pre-filtering")) return 45;
+        if (line.contains("spectral")) return 55;
+        if (line.contains("deepfilter") || line.contains("neural")) return 70;
+        if (line.contains("vad") || line.contains("activity")) return 82;
+        if (line.contains("dynamics") || line.contains("leveling") || line.contains("compressor")) return 88;
+        if (line.contains("mastering") || line.contains("tone") || line.contains("loudness")) return 93;
         if (line.contains("reconstructing")) return 97;
-        if (line.contains("done")) return 99;
-        return 60;
+        if (line.contains("saving")) return 99;
+        if (line.contains("done")) return 100;
+        return 50;
     }
 
     private String describeProgress(String rawLine) {
@@ -282,12 +313,13 @@ public class AudioJobService {
         if (body.startsWith("spectral_subtract skipped") || body.startsWith("near-zero noise floor")) {
             return "Removing background noise";
         }
-        if (body.startsWith("stereo length mismatch")) {
-            return "Finalizing stereo output";
-        }
         if (body.startsWith("done")) {
             return "Finishing up";
         }
         return body;
+    }
+
+    public JobQueueService getJobQueueService() {
+        return jobQueueService;
     }
 }

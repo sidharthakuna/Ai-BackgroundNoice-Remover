@@ -49,15 +49,26 @@ public class DenoiseProcessRunner {
 
     public void run(Path scriptDir, Path inputPath, Path outputPath, boolean useDemucs, String mode, String jobId,
                     Consumer<String> progressListener) {
-        Path entryPoint = scriptDir.resolve("main.py");
         String pythonExec = resolvePythonExecutable();
-        List<String> command = new ArrayList<>(List.of(
-                pythonExec,
-                "-u",
-                entryPoint.toString(),
-                inputPath.toString(),
-                outputPath.toString()
-        ));
+        List<String> command = new ArrayList<>();
+        command.add(pythonExec);
+        command.add("-u");
+
+        if (Files.exists(Path.of("python_service").resolve("cli.py"))) {
+            command.add("-m");
+            command.add("python_service.cli");
+        } else if (scriptDir != null && Files.exists(scriptDir.resolve("main.py"))) {
+            command.add(scriptDir.resolve("main.py").toString());
+        } else {
+            command.add("-m");
+            command.add("python_service.cli");
+        }
+
+        command.add(inputPath.toString());
+        command.add(outputPath.toString());
+        command.add("--job-id");
+        command.add(jobId);
+
         if (useDemucs) {
             command.add("--demucs");
         }
@@ -74,7 +85,11 @@ public class DenoiseProcessRunner {
         pb.environment().put("VECLIB_MAXIMUM_THREADS", "1");
         pb.environment().put("NUMEXPR_NUM_THREADS", "1");
         pb.environment().put("TORCH_NUM_THREADS", "1");
-        pb.directory(scriptDir.toFile());
+
+        File workDir = Files.exists(Path.of("python_service"))
+                ? new File(".")
+                : (scriptDir != null ? scriptDir.toFile() : new File("."));
+        pb.directory(workDir);
         pb.redirectErrorStream(true);
 
         StringBuilder fullOutput = new StringBuilder();

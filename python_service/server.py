@@ -1,7 +1,8 @@
 """
 server.py — FastAPI microservice for AI background noise removal.
-Listens on internal 127.0.0.1:5000.
-Streams real-time DSP progress events to Java backend via NDJSON.
+Runs on internal 127.0.0.1:5000.
+Pre-warms DeepFilterNet3 neural models, streams real-time NDJSON progress events,
+and supports cooperative cancellation tokens.
 """
 
 import asyncio
@@ -10,27 +11,27 @@ import traceback
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import uvicorn
 
-from python_service.engine import model_manager
+from python_service.engine import model_registry, memory_guard
 from python_service.pipeline import execute_pipeline
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Pre-warm neural models during container start
-    model_manager.preload_models()
+    model_registry.preload_models()
     yield
     # Cleanup memory on shutdown
-    model_manager.cleanup_memory()
+    memory_guard.cleanup()
 
 
 app = FastAPI(
     title="AI Background Noise Remover Microservice",
-    version="2.0.0",
+    version="2.1.0",
     lifespan=lifespan
 )
 
@@ -45,19 +46,21 @@ class ProcessRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    """Health check endpoint queried by Java Backend."""
-    mem_info = model_manager.get_memory_info()
+    """Detailed health check endpoint queried by Java backend."""
+    mem_info = memory_guard.get_status()
+    models_info = model_registry.get_status()
     return {
         "status": "UP",
         "service": "ai-noise-remover-python",
-        "memory": mem_info
+        "memory": mem_info,
+        "models": models_info
     }
 
 
 @app.post("/jobs/{job_id}/cancel")
 def cancel_job(job_id: str):
     """Sets cooperative cancellation token for active job."""
-    success = model_manager.cancel_job(job_id)
+    success = model_registry.cancel_job(job_id)
     return {
         "job_id": job_id,
         "cancelled": success
@@ -67,10 +70,10 @@ def cancel_job(job_id: str):
 @app.post("/process")
 async def process_audio(req: ProcessRequest):
     """
-    Executes DSP enhancement pipeline and streams newline-delimited JSON
+    Executes modular DSP enhancement pipeline and streams newline-delimited JSON
     progress events back to Java in real time.
     """
-    model_manager.register_job(req.job_id)
+    model_registry.register_job(req.job_id)
     event_queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
 
@@ -85,7 +88,7 @@ async def process_audio(req: ProcessRequest):
         loop.call_soon_threadsafe(event_queue.put_nowait, event)
 
     def cancel_check() -> bool:
-        return model_manager.is_cancelled(req.job_id)
+        return model_registry.is_cancelled(req.job_id)
 
     async def run_in_background():
         try:
@@ -95,7 +98,7 @@ async def process_audio(req: ProcessRequest):
                 req.output_path,
                 req.mode or "balanced",
                 req.use_demucs or False,
-                model_manager,
+                model_registry,
                 sync_progress_callback,
                 cancel_check
             )
@@ -120,8 +123,8 @@ async def process_audio(req: ProcessRequest):
             }
             await event_queue.put(event)
         finally:
-            model_manager.unregister_job(req.job_id)
-            model_manager.cleanup_memory()
+            model_registry.unregister_job(req.job_id)
+            memory_guard.cleanup()
             # Sentinel to close stream
             await event_queue.put(None)
 

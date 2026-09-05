@@ -18,25 +18,19 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.Consumer;
 
 /**
- * Status polling and result retrieval for jobs started via
- * AudioController. Introduced alongside the switch to async processing —
- * the original synchronous AudioController.enhance() returned the result
- * bytes directly, so nothing like this was needed before.
- *
- * Typical client flow:
- *   1. POST /api/v1/audio/enhance -> 202 { jobId, statusUrl }
- *   2. GET  /api/v1/jobs/{jobId}/status  (poll until resultReady=true or status=FAILED)
- *   3. GET  /api/v1/jobs/{jobId}/result  -> the audio bytes (streamed from disk)
- *   4. (optional) DELETE /api/v1/jobs/{jobId} once the result has been
- *      downloaded, to free the temp directory immediately rather than
- *      waiting for JobStatusStore's hourly eviction.
+ * Status polling, real-time SSE streaming, and result retrieval for jobs.
+ * Supports both:
+ * 1. Traditional polling via GET /api/v1/jobs/{jobId}/status
+ * 2. Real-time Server-Sent Events (SSE) via GET /api/v1/jobs/{jobId}/events
  */
 @RestController
 @RequestMapping("api/v1/jobs")
@@ -54,6 +48,39 @@ public class JobController {
     public ResponseEntity<JobStatusResponse> status(@PathVariable String jobId) {
         JobRecord record = findOrThrow(jobId);
         return ResponseEntity.ok(JobStatusResponse.from(record));
+    }
+
+    /**
+     * Real-time Server-Sent Events (SSE) stream.
+     * Pushes progress updates immediately to the client as DSP stages complete.
+     */
+    @GetMapping(value = "/{jobId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamEvents(@PathVariable String jobId) {
+        JobRecord record = findOrThrow(jobId);
+        SseEmitter emitter = new SseEmitter(15 * 60 * 1000L); // 15 minute timeout
+
+        Consumer<JobRecord> listener = rec -> {
+            try {
+                emitter.send(SseEmitter.event()
+                        .name("progress")
+                        .data(JobStatusResponse.from(rec)));
+                if (rec.getStatus() == JobStatus.DONE || rec.getStatus() == JobStatus.FAILED) {
+                    emitter.complete();
+                }
+            } catch (Exception e) {
+                emitter.completeWithError(e);
+            }
+        };
+
+        record.addListener(listener);
+        emitter.onCompletion(() -> record.removeListener(listener));
+        emitter.onTimeout(() -> {
+            record.removeListener(listener);
+            emitter.complete();
+        });
+        emitter.onError(e -> record.removeListener(listener));
+
+        return emitter;
     }
 
     @GetMapping("/{jobId}/result")
