@@ -109,7 +109,7 @@ export function createProcessingQueue(appState, callbacks) {
             }
 
             // ── Step 1: upload ────────────────────────────────────────
-            async function submit(maxRetries = 3) {
+            async function submit(maxRetries = 8) {
                 const formData = new FormData();
                 formData.append("file", entry.file);
                 formData.append("demucs", String(entry.useDemucs));
@@ -128,7 +128,8 @@ export function createProcessingQueue(appState, callbacks) {
                             },
                         });
                         if (isRetryableStatus(xhr.status) && attempt < maxRetries) {
-                            await abortableDelay(entry, 2500);
+                            setProgressLabel(progressLabel, `Connecting to server… (${attempt}/${maxRetries})`);
+                            await abortableDelay(entry, 3000);
                             continue;
                         }
                         if (xhr.status < 200 || xhr.status >= 300) {
@@ -143,7 +144,8 @@ export function createProcessingQueue(appState, callbacks) {
                         if (attempt >= maxRetries || (e && e.name === "AbortError") || (e && e.isAppError)) {
                             throw e;
                         }
-                        await abortableDelay(entry, 2500);
+                        setProgressLabel(progressLabel, `Connecting to server… (${attempt}/${maxRetries})`);
+                        await abortableDelay(entry, 3000);
                     }
                 }
             }
@@ -184,7 +186,7 @@ export function createProcessingQueue(appState, callbacks) {
             }
 
             // ── Step 3: download the real result ──────────────────────
-            async function fetchResult(jobId, maxRetries = 4) {
+            async function fetchResult(jobId, maxRetries = 8) {
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         const xhr = await sendRequest(entry, "GET", `/api/v1/jobs/${jobId}/result`, {
